@@ -1,0 +1,23 @@
+{
+  "name": "vimage",
+  "version": "1.0.0",
+  "description": "Unsplash image proxy service with LLM fallback",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js"
+  },
+  "keywords": ["unsplash", "image", "proxy", "llm"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "axios": "^1.6.0",
+    "node-cache": "^5.1.2",
+    "better-sqlite3": "^9.2.0",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}

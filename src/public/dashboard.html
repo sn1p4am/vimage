@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vimage 监控面板</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 2rem;
+      color: #2d3748;
+    }
+
+    .container {
+      width: 100%;
+      margin: 0 auto;
+      padding: 0;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 2.5rem;
+      animation: fadeInDown 0.6s ease-out;
+    }
+
+    .header h1 {
+      font-size: 2.5rem;
+      color: #fff;
+      font-weight: 700;
+      text-shadow: 0 2px 10px rgba(0,0,0,0.2);
+      margin-bottom: 0.5rem;
+    }
+
+    .header p {
+      color: rgba(255,255,255,0.9);
+      font-size: 1rem;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+      animation: fadeInUp 0.6s ease-out 0.1s backwards;
+    }
+
+    .stat-card {
+      background: rgba(255,255,255,0.95);
+      backdrop-filter: blur(10px);
+      border-radius: 16px;
+      padding: 1.5rem;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+      border: 1px solid rgba(255,255,255,0.3);
+    }
+
+    .stat-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 15px 40px rgba(0,0,0,0.2);
+    }
+
+    .stat-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+    }
+
+    .stat-card-title {
+      font-size: 0.875rem;
+      color: #718096;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .stat-card-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.25rem;
+    }
+
+    .icon-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+    .icon-success { background: linear-gradient(135deg, #48bb78 0%, #38a169 100%); }
+    .icon-warning { background: linear-gradient(135deg, #ed8936 0%, #dd6b20 100%); }
+    .icon-info { background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%); }
+
+    .stat-card-value {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #2d3748;
+      margin-bottom: 0.5rem;
+    }
+
+    .stat-card-footer {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.875rem;
+      color: #718096;
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 8px;
+      background: #e2e8f0;
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 0.75rem;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+      border-radius: 4px;
+      transition: width 0.6s ease;
+    }
+
+    .logs-section {
+      background: rgba(255,255,255,0.95);
+      backdrop-filter: blur(10px);
+      border-radius: 16px;
+      padding: 2rem;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+      animation: fadeInUp 0.6s ease-out 0.2s backwards;
+      border: 1px solid rgba(255,255,255,0.3);
+    }
+
+    .logs-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    .logs-title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #2d3748;
+    }
+
+    .refresh-btn {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #fff;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 8px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      box-shadow: 0 4px 12px rgba(102,126,234,0.4);
+    }
+
+    .refresh-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(102,126,234,0.5);
+    }
+
+    .refresh-btn:active {
+      transform: translateY(0);
+    }
+
+    .logs-table-container {
+      overflow-x: auto;
+      border-radius: 8px;
+    }
+
+    .logs-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+
+    .logs-table thead {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #fff;
+    }
+
+    .logs-table th {
+      padding: 1rem;
+      text-align: left;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-size: 0.75rem;
+    }
+
+    .logs-table tbody tr {
+      border-bottom: 1px solid #e2e8f0;
+      transition: background-color 0.2s ease;
+    }
+
+    .logs-table tbody tr:hover {
+      background-color: #f7fafc;
+    }
+
+    .logs-table td {
+      padding: 1rem;
+      color: #4a5568;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 0.25rem 0.75rem;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .badge-success {
+      background: #c6f6d5;
+      color: #22543d;
+    }
+
+    .badge-error {
+      background: #fed7d7;
+      color: #742a2a;
+    }
+
+    .badge-cache {
+      background: #bee3f8;
+      color: #2c5282;
+    }
+
+    .badge-unsplash {
+      background: #fbd38d;
+      color: #744210;
+    }
+
+    .badge-picsum {
+      background: #e9d8fd;
+      color: #44337a;
+    }
+
+    .badge-retry {
+      background: #feebc8;
+      color: #7c2d12;
+    }
+
+    .url-cell {
+      max-width: 250px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .preview-img {
+      width: 80px;
+      height: 60px;
+      object-fit: cover;
+      border-radius: 8px;
+      border: 2px solid #e2e8f0;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      cursor: pointer;
+    }
+
+    .preview-img:hover {
+      transform: scale(1.05);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      border-color: #667eea;
+    }
+
+    .preview-placeholder {
+      width: 80px;
+      height: 60px;
+      background: #f7fafc;
+      border: 2px dashed #cbd5e0;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #a0aec0;
+      font-size: 1.5rem;
+    }
+
+    .pagination {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 0.5rem;
+      margin-top: 1.5rem;
+    }
+
+    .pagination button {
+      padding: 0.5rem 1rem;
+      border: 1px solid #cbd5e0;
+      background: #fff;
+      color: #4a5568;
+      border-radius: 6px;
+      font-size: 0.875rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .pagination button:hover:not(:disabled) {
+      background: #f7fafc;
+      border-color: #667eea;
+      color: #667eea;
+    }
+
+    .pagination button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .pagination .page-info {
+      color: #4a5568;
+      font-size: 0.875rem;
+      font-weight: 500;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 2rem;
+      color: #718096;
+    }
+
+    .spinner {
+      border: 3px solid #e2e8f0;
+      border-top: 3px solid #667eea;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    @keyframes fadeInDown {
+      from {
+        opacity: 0;
+        transform: translateY(-20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 3rem 1rem;
+      color: #718096;
+    }
+
+    .empty-state-icon {
+      font-size: 3rem;
+      margin-bottom: 1rem;
+      opacity: 0.5;
+    }
+
+    @media (max-width: 768px) {
+      body {
+        padding: 1rem;
+      }
+
+      .header h1 {
+        font-size: 1.75rem;
+      }
+
+      .stats-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .logs-section {
+        padding: 1rem;
+      }
+
+      .logs-table {
+        font-size: 0.75rem;
+      }
+
+      .logs-table th,
+      .logs-table td {
+        padding: 0.75rem 0.5rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>📊 Vimage 监控面板</h1>
+      <p>实时监控图片代理服务状态</p>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-card-header">
+          <span class="stat-card-title">总请求数</span>
+          <div class="stat-card-icon icon-primary">📈</div>
+        </div>
+        <div class="stat-card-value" id="totalRequests">-</div>
+        <div class="stat-card-footer">
+          <span>累计处理请求</span>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-card-header">
+          <span class="stat-card-title">成功率</span>
+          <div class="stat-card-icon icon-success">✓</div>
+        </div>
+        <div class="stat-card-value" id="successRate">-</div>
+        <div class="progress-bar">
+          <div class="progress-fill" id="successRateBar" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-card-header">
+          <span class="stat-card-title">缓存命中率</span>
+          <div class="stat-card-icon icon-info">💾</div>
+        </div>
+        <div class="stat-card-value" id="cacheHitRate">-</div>
+        <div class="progress-bar">
+          <div class="progress-fill" id="cacheHitRateBar" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-card-header">
+          <span class="stat-card-title">平均响应时间</span>
+          <div class="stat-card-icon icon-warning">⚡</div>
+        </div>
+        <div class="stat-card-value" id="avgResponseTime">-</div>
+        <div class="stat-card-footer">
+          <span>毫秒</span>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-card-header">
+          <span class="stat-card-title">速率限制</span>
+          <div class="stat-card-icon icon-warning">🔒</div>
+        </div>
+        <div class="stat-card-value" id="rateLimit">-</div>
+        <div class="stat-card-footer">
+          <span id="rateLimitReset">-</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill" id="rateLimitBar" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-card-header">
+          <span class="stat-card-title">缓存状态</span>
+          <div class="stat-card-icon icon-info">📦</div>
+        </div>
+        <div class="stat-card-value" id="cacheKeys">-</div>
+        <div class="stat-card-footer">
+          <span id="cacheStats">-</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="logs-section">
+      <div class="logs-header">
+        <h2 class="logs-title">📝 请求日志</h2>
+        <button class="refresh-btn" onclick="loadData()">🔄 刷新数据</button>
+      </div>
+
+      <div class="logs-table-container">
+        <table class="logs-table">
+          <thead>
+            <tr>
+              <th>时间</th>
+              <th>URL</th>
+              <th>查询词</th>
+              <th>重试1</th>
+              <th>重试2</th>
+              <th>重试3</th>
+              <th>来源</th>
+              <th>状态</th>
+              <th>响应时间</th>
+              <th>预览</th>
+            </tr>
+          </thead>
+          <tbody id="logsTableBody">
+            <tr>
+              <td colspan="10" class="loading">
+                <div class="spinner"></div>
+                <p style="margin-top: 1rem;">加载中...</p>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="pagination">
+        <button onclick="previousPage()" id="prevBtn">上一页</button>
+        <span class="page-info" id="pageInfo">第 1 页</span>
+        <button onclick="nextPage()" id="nextBtn">下一页</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentPage = 1;
+    const pageSize = 20;
+    let totalLogs = 0;
+
+    async function loadStats() {
+      try {
+        const response = await fetch('/api/stats');
+        const data = await response.json();
+
+        document.getElementById('totalRequests').textContent = data.totalRequests || 0;
+
+        const successRate = data.successRate || 0;
+        document.getElementById('successRate').textContent = successRate.toFixed(1) + '%';
+        document.getElementById('successRateBar').style.width = successRate + '%';
+
+        const cacheHitRate = data.cacheHitRate || 0;
+        document.getElementById('cacheHitRate').textContent = cacheHitRate.toFixed(1) + '%';
+        document.getElementById('cacheHitRateBar').style.width = cacheHitRate + '%';
+
+        document.getElementById('avgResponseTime').textContent = (data.avgResponseTime || 0) + ' ms';
+
+        const rateLimit = data.rateLimitStatus || {};
+        const current = rateLimit.current || 0;
+        const limit = rateLimit.limit || 4800;
+        const percentage = (current / limit * 100);
+        document.getElementById('rateLimit').textContent = current + ' / ' + limit;
+        document.getElementById('rateLimitBar').style.width = percentage + '%';
+
+        const resetIn = rateLimit.resetIn || 0;
+        const resetMinutes = Math.floor(resetIn / 60);
+        document.getElementById('rateLimitReset').textContent = resetMinutes + ' 分钟后重置';
+
+        const cacheStats = data.cacheStats || {};
+        document.getElementById('cacheKeys').textContent = cacheStats.keys || 0;
+        document.getElementById('cacheStats').textContent =
+          '命中: ' + (cacheStats.hits || 0) + ' / 未命中: ' + (cacheStats.misses || 0);
+
+      } catch (error) {
+        console.error('Failed to load stats:', error);
+      }
+    }
+
+    async function loadLogs() {
+      try {
+        const response = await fetch('/api/logs?page=' + currentPage + '&limit=' + pageSize);
+        const data = await response.json();
+
+        totalLogs = data.total || 0;
+        const tbody = document.getElementById('logsTableBody');
+        tbody.innerHTML = '';
+
+        if (data.data && data.data.length > 0) {
+          data.data.forEach(log => {
+            const tr = document.createElement('tr');
+
+            // 将 UTC 时间转换为中国时间
+            const timestamp = new Date(log.timestamp + ' UTC');
+            const timeStr = timestamp.toLocaleString('zh-CN', {
+              timeZone: 'Asia/Shanghai',
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit'
+            });
+
+            const tdTime = document.createElement('td');
+            tdTime.textContent = timeStr;
+            tr.appendChild(tdTime);
+
+            const tdUrl = document.createElement('td');
+            tdUrl.className = 'url-cell';
+            tdUrl.textContent = log.original_url;
+            tdUrl.title = log.original_url;
+            tr.appendChild(tdUrl);
+
+            const tdQuery = document.createElement('td');
+            tdQuery.textContent = log.query_term || '(格式错误)';
+            tr.appendChild(tdQuery);
+
+            const tdRetry1 = document.createElement('td');
+            tdRetry1.textContent = log.retry_1_term || '-';
+            tdRetry1.style.color = log.retry_1_term ? '#4a5568' : '#cbd5e0';
+            tr.appendChild(tdRetry1);
+
+            const tdRetry2 = document.createElement('td');
+            tdRetry2.textContent = log.retry_2_term || '-';
+            tdRetry2.style.color = log.retry_2_term ? '#4a5568' : '#cbd5e0';
+            tr.appendChild(tdRetry2);
+
+            const tdRetry3 = document.createElement('td');
+            tdRetry3.textContent = log.retry_3_term || '-';
+            tdRetry3.style.color = log.retry_3_term ? '#4a5568' : '#cbd5e0';
+            tr.appendChild(tdRetry3);
+
+            const tdSource = document.createElement('td');
+            const sourceBadge = document.createElement('span');
+            sourceBadge.className = 'badge';
+
+            const sourceText = log.source || 'unknown';
+            if (sourceText.includes('cache')) {
+              sourceBadge.className += ' badge-cache';
+              sourceBadge.textContent = 'Cache';
+            } else if (sourceText.includes('unsplash')) {
+              sourceBadge.className += ' badge-unsplash';
+              sourceBadge.textContent = sourceText.includes('retry') ? 'Retry-' + sourceText.slice(-1) : 'Unsplash';
+            } else if (sourceText.includes('picsum')) {
+              sourceBadge.className += ' badge-picsum';
+              sourceBadge.textContent = 'Picsum';
+            } else {
+              sourceBadge.textContent = sourceText;
+            }
+
+            tdSource.appendChild(sourceBadge);
+            tr.appendChild(tdSource);
+
+            const tdStatus = document.createElement('td');
+            const statusBadge = document.createElement('span');
+            statusBadge.className = 'badge';
+
+            if (log.success) {
+              statusBadge.className += ' badge-success';
+              statusBadge.textContent = '成功';
+            } else {
+              statusBadge.className += ' badge-error';
+              statusBadge.textContent = '失败';
+            }
+
+            if (log.error_message) {
+              statusBadge.title = log.error_message;
+            }
+
+            tdStatus.appendChild(statusBadge);
+            tr.appendChild(tdStatus);
+
+            const tdResponse = document.createElement('td');
+            tdResponse.textContent = log.response_time ? log.response_time + ' ms' : '-';
+            tr.appendChild(tdResponse);
+
+            const tdPreview = document.createElement('td');
+            if (log.success && log.final_url) {
+              const img = document.createElement('img');
+              img.src = log.final_url;
+              img.className = 'preview-img';
+              img.alt = 'Preview';
+              img.loading = 'lazy';
+              img.title = '点击在新标签页中查看完整图片';
+              img.onclick = () => window.open(log.final_url, '_blank');
+              tdPreview.appendChild(img);
+            } else {
+              const placeholder = document.createElement('div');
+              placeholder.className = 'preview-placeholder';
+              placeholder.textContent = '—';
+              tdPreview.appendChild(placeholder);
+            }
+            tr.appendChild(tdPreview);
+
+            tbody.appendChild(tr);
+          });
+        } else {
+          const tr = document.createElement('tr');
+          const td = document.createElement('td');
+          td.colSpan = 10;
+          td.className = 'empty-state';
+          td.innerHTML = '<div class="empty-state-icon">📭</div><p>暂无请求日志</p>';
+          tr.appendChild(td);
+          tbody.appendChild(tr);
+        }
+
+        updatePagination();
+      } catch (error) {
+        console.error('Failed to load logs:', error);
+        const tbody = document.getElementById('logsTableBody');
+        tbody.innerHTML = '<tr><td colspan="10" class="empty-state"><p>加载失败，请刷新重试</p></td></tr>';
+      }
+    }
+
+    function updatePagination() {
+      const totalPages = Math.ceil(totalLogs / pageSize);
+      document.getElementById('pageInfo').textContent = '第 ' + currentPage + ' / ' + totalPages + ' 页 (共 ' + totalLogs + ' 条)';
+      document.getElementById('prevBtn').disabled = currentPage === 1;
+      document.getElementById('nextBtn').disabled = currentPage >= totalPages || totalPages === 0;
+    }
+
+    function previousPage() {
+      if (currentPage > 1) {
+        currentPage--;
+        loadLogs();
+      }
+    }
+
+    function nextPage() {
+      const totalPages = Math.ceil(totalLogs / pageSize);
+      if (currentPage < totalPages) {
+        currentPage++;
+        loadLogs();
+      }
+    }
+
+    async function loadData() {
+      await Promise.all([loadStats(), loadLogs()]);
+    }
+
+    loadData();
+
+    setInterval(loadData, 30000);
+  </script>
+</body>
+</html>

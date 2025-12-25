@@ -1,0 +1,42 @@
+# 环境变量（包含API密钥）
+.env
+
+# 数据库文件
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 日志
+logs/
+*.log
+
+# 临时文件
+tmp/
+temp/
+test_*.js
+
+# Claude 配置
+.claude/
+
+# 调试日志
+firebase-debug.log
+
+# 参考文件
+ref/

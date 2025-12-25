@@ -1,0 +1,19 @@
+services:
+  vimage:
+    build: .
+    container_name: vimage-service
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    volumes:
+      - ./data:/data  # 持久化SQLite数据库
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/stats"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    environment:
+      - NODE_ENV=production
+      - DB_PATH=/data/vimage.db
