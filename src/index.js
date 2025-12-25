@@ -11,7 +11,7 @@ const imageRouter = require('./routes/image');
 const apiRouter = require('./routes/api');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 7749;
 
 // 中间件
 app.use(express.json());

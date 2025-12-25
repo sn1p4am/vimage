@@ -34,8 +34,8 @@ docker-compose up -d
 ```
 
 4. **访问服务**
-- 图片代理：`http://localhost:3000/vimage_001_cute-cat.jpg`
-- 监控面板：`http://localhost:3000/dashboard`
+- 图片代理：`http://localhost:7749/vimage_001_cute-cat.jpg`
+- 监控面板：`http://localhost:7749/dashboard`
 
 ### 方式二：本地运行
 
@@ -64,9 +64,9 @@ npm start
 ### 在HTML中使用
 
 ```html
-<img src="http://localhost:3000/vimage_001_cute-cat.jpg">
-<img src="http://localhost:3000/vimage_002_blue-fashion-car.jpg">
-<img src="http://localhost:3000/vimage_003_sunset-beach.jpg">
+<img src="http://localhost:7749/vimage_001_cute-cat.jpg">
+<img src="http://localhost:7749/vimage_002_blue-fashion-car.jpg">
+<img src="http://localhost:7749/vimage_003_sunset-beach.jpg">
 ```
 
 浏览器会自动跟随302重定向，加载实际的Unsplash图片。
@@ -116,8 +116,8 @@ http://your-domain.com/vimage_{序号}_{描述词}.{扩展名}
 |--------|------|--------|
 | `UNSPLASH_ACCESS_KEY` | Unsplash API密钥 | 必填 |
 | `OPENROUTER_API_KEY` | OpenRouter API密钥 | 必填 |
-| `OPENROUTER_MODEL` | LLM模型ID | `google/gemini-flash-3.0-preview` |
-| `PORT` | 服务端口 | `3000` |
+| `OPENROUTER_MODEL` | LLM模型ID | `google/gemini-3-flash-preview` |
+| `PORT` | 服务端口 | `7749` |
 | `NODE_ENV` | 运行环境 | `development` |
 | `CACHE_TTL` | 缓存过期时间（秒） | `43200`（12小时） |
 | `UNSPLASH_RATE_LIMIT` | 速率限制（请求/小时） | `4800` |

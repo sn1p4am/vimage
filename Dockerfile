@@ -14,12 +14,12 @@ COPY src ./src
 # 创建数据目录
 RUN mkdir -p /data
 
-# 暴露端口
-EXPOSE 3000
+# 暴露端口（默认7749，可通过.env配置）
+EXPOSE 7749
 
 # 健康检查
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-  CMD wget --quiet --tries=1 --spider http://localhost:3000/api/stats || exit 1
+  CMD wget --quiet --tries=1 --spider http://localhost:7749/api/stats || exit 1
 
 # 启动服务
 CMD ["node", "src/index.js"]

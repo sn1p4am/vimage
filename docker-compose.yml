@@ -3,14 +3,14 @@ services:
     build: .
     container_name: vimage-service
     ports:
-      - "3000:3000"
+      - "${PORT:-7749}:${PORT:-7749}"
     env_file:
       - .env
     volumes:
       - ./data:/data  # 持久化SQLite数据库
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/stats"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:${PORT:-7749}/api/stats"]
       interval: 30s
       timeout: 10s
       retries: 3
