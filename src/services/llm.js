@@ -1,16 +1,17 @@
 /**
  * LLM服务
- * 使用OpenRouter API进行同义词替换
+ * 使用阿里百炼 DashScope OpenAI 兼容接口进行同义词替换
  */
 
 const axios = require('axios');
 
-const OPENROUTER_API_BASE = 'https://openrouter.ai/api/v1';
-const API_KEY = process.env.OPENROUTER_API_KEY;
-const MODEL = process.env.OPENROUTER_MODEL || 'google/gemini-flash-3.0-preview';
+const DASHSCOPE_API_BASE = process.env.DASHSCOPE_API_BASE
+  || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+const API_KEY = process.env.DASHSCOPE_API_KEY;
+const MODEL = process.env.DASHSCOPE_MODEL || 'deepseek-v4-flash';
 
 if (!API_KEY) {
-  console.warn('Warning: OPENROUTER_API_KEY not set in environment variables');
+  console.warn('Warning: DASHSCOPE_API_KEY not set in environment variables');
 }
 
 /**
@@ -62,7 +63,7 @@ function generateSimplifyPrompt(originalTerm) {
 }
 
 /**
- * 调用OpenRouter API获取同义词
+ * 调用阿里百炼 DashScope API获取同义词
  * @param {string} originalTerm - 原始查询词
  * @param {number} retryNum - 重试次数（1-3）
  * @returns {Promise<string>} 同义词
@@ -75,10 +76,11 @@ async function getLLMSynonym(originalTerm, retryNum) {
       : generateSimplifyPrompt(originalTerm);
 
     const response = await axios.post(
-      `${OPENROUTER_API_BASE}/chat/completions`,
+      `${DASHSCOPE_API_BASE}/chat/completions`,
       {
         model: MODEL,
         messages: [
+          { role: 'system', content: 'You are a helpful assistant.' },
           { role: 'user', content: prompt }
         ]
       },

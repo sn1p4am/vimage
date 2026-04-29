@@ -9,12 +9,14 @@ const path = require('path');
 
 const imageRouter = require('./routes/image');
 const apiRouter = require('./routes/api');
+const basicAuth = require('./middleware/basicAuth');
 
 const app = express();
 const PORT = process.env.PORT || 7749;
 
 // 中间件
 app.use(express.json());
+app.use(['/dashboard', '/dashboard.html', '/api/logs'], basicAuth);
 app.use(express.static(path.join(__dirname, 'public')));
 
 // 请求日志中间件

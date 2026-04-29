@@ -162,10 +162,15 @@ http://your-domain.com/vimage_{序号}_{描述词}.{扩展名}
 | 变量名 | 说明 | 默认值 |
 |--------|------|--------|
 | `UNSPLASH_ACCESS_KEY` | Unsplash API密钥 | 必填 |
-| `OPENROUTER_API_KEY` | OpenRouter API密钥 | 必填 |
-| `OPENROUTER_MODEL` | LLM模型ID | `google/gemini-3-flash-preview` |
+| `DASHSCOPE_API_KEY` | 阿里百炼 DashScope API密钥 | 必填 |
+| `DASHSCOPE_MODEL` | LLM模型ID | `deepseek-v4-flash` |
+| `DASHSCOPE_API_BASE` | 阿里百炼 OpenAI 兼容接口地址 | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
 | `PORT` | 服务端口 | `7749` |
 | `NODE_ENV` | 运行环境 | `development` |
+| `BASIC_AUTH_ENABLED` | 是否启用Basic Auth保护管理入口 | `true` |
+| `BASIC_AUTH_USERNAME` | Basic Auth用户名 | `admin` |
+| `BASIC_AUTH_PASSWORD` | Basic Auth密码 | 必填 |
+| `BASIC_AUTH_REALM` | 浏览器认证弹窗显示的区域名 | `Vimage` |
 | `CACHE_TTL` | 缓存过期时间（秒） | `43200`（12小时） |
 | `UNSPLASH_RATE_LIMIT` | 速率限制（请求/小时） | `4800` |
 | `DB_PATH` | SQLite数据库路径 | `./data/vimage.db` |
