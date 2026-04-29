@@ -127,7 +127,18 @@ ADMIN_COOKIE_SECURE=true
 - 输出 Markdown 时，使用普通图片语法：![图片描述](图片URL)。
 - 输出 HTML 时，img 标签保留原本布局、类名、尺寸和父容器设计，不因为图片规则改变页面结构或视觉布局。
 - 输出 HTML 时，所有 Vimage 的 img 标签都添加 loading="lazy" decoding="async"，让浏览器按需加载图片，避免大量图片阻塞页面打开。
-- 输出 HTML 时，Vimage 图片加载前默认使用 Editorial Neutral 中性渐变占位；优先给 img 本身或已有图片容器添加背景，不为占位效果额外改变布局。推荐背景：linear-gradient(135deg, #f0ede5 0%, #c9c1b6 34%, #9d9f99 68%, #626860 100%)。如已有图片容器，可在不影响布局的前提下添加轻微 shimmer 和图片淡入过渡。
+- 输出 HTML 时，Vimage 图片加载前必须使用 Editorial Neutral 动态渐变占位，不要只用静态灰色背景。优先在不改变布局的前提下给 Vimage img 添加 class="vimage-img"，并在页面 CSS 中加入：
+  .vimage-img {
+    background: linear-gradient(135deg, #f0ede5 0%, #c9c1b6 34%, #9d9f99 68%, #626860 100%);
+    background-size: 240% 100%;
+    animation: vimage-placeholder-shimmer 1.8s ease-in-out infinite;
+  }
+  @keyframes vimage-placeholder-shimmer {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
+- 如果图片已有不影响布局的容器，可以给容器添加动态 shimmer 和图片淡入过渡；不要为了占位效果额外包裹元素或改变布局。
 - 输出 HTML 时，可以根据用户意图、页面布局和上下文主题为图片补充 width、height、aspect-ratio 等尺寸信息，帮助浏览器预留空间；这些尺寸必须符合原有视觉设计和图片所在容器，不要生硬套用固定比例。
 - 不要限制页面图片数量，不要删除图片，不要改变图片所在位置，不要为了图片加载规则调整布局。
 ```
