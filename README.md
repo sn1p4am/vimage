@@ -116,18 +116,66 @@ ADMIN_COOKIE_SECURE=true
 
 ### 一键配置，立即可用！
 
-只需在 AI 对话的系统提示词或项目提示词中添加以下规则，AI 生成的内容就能自动配上精美图片：
+只需在 AI 对话的系统提示词或项目提示词中添加以下规则，AI 生成的内容就能自动配上精美图片。把 `yourdomain.com` 换成你的实际域名，例如 `vimage.devart.ai`。
 
 ```
 图片使用规则：
-- 图片URL格式：http://yourdomain.com/vimage_{序号}_{描述词}.jpg
-- 图片URL规范：
-  1. 使用英文描述词，符合上下文语义和主题
-  2. 多个词用连字符 - 连接
-  3. 序号使用 3 位数字（001、002、003...）
+- 使用 Vimage 图片URL，格式为：https://yourdomain.com/vimage_{三位序号}_{英文描述词}.jpg
+- 英文描述词要符合上下文语义和主题；多个词用连字符 - 连接。
+- 序号必须使用 3 位数字，例如 001、002、003。
+- 如果输出 Markdown，使用普通图片语法即可：
+  ![图片描述](https://yourdomain.com/vimage_001_cute-cat.jpg?w=900&q=78)
+- 如果输出 HTML，必须按页面性能规则写 img 标签：
+  1. 首屏关键图最多 1-3 张，不要使用 loading="lazy"，添加 decoding="async" fetchpriority="high"。
+  2. 非首屏图片全部添加 loading="lazy" decoding="async"。
+  3. 每张图片都设置 width 和 height，或确保父容器有固定尺寸，避免布局抖动。
+  4. 按实际展示尺寸添加图片参数：?w={展示宽度}&q={质量}。
+  5. 卡片/缩略图建议 q=70-75；首屏大图建议 q=76-82。
+  6. 不要让页面一次性 eager 加载大量 Vimage 图片。
 ```
 
-**就这么简单！** 将 `yourdomain.com` 替换为你的服务域名（本地测试用 `localhost:7749`），AI 立即就能在生成内容时自动插入图片。
+**就这么简单！** 本地测试用 `http://localhost:7749`，公网建议使用 `https://`，避免浏览器的混合内容限制。
+
+### HTML生成提示词模板
+
+如果你让 AI 生成网页或落地页，可以直接把下面这段放进项目提示词：
+
+```
+生成 HTML 时，所有配图都使用 Vimage：
+- 域名：https://yourdomain.com
+- URL格式：https://yourdomain.com/vimage_{三位序号}_{英文描述词}.jpg?w={宽度}&q={质量}
+- 描述词必须是英文，多个词用连字符连接，例如 brutalist-concrete-museum。
+- 首屏最多 1-3 张关键图，不加 loading="lazy"，需要加 decoding="async" fetchpriority="high"。
+- 首屏以下图片全部加 loading="lazy" decoding="async"。
+- 每个 img 必须有准确的 alt、width、height。
+- 按展示宽度设置 w 参数：小卡片 320-480，普通内容图 640-900，首屏大图 960-1400。
+- 按场景设置 q 参数：小卡片 q=70-75，普通内容图 q=72-78，首屏大图 q=76-82。
+- 图片父容器必须有稳定尺寸或 aspect-ratio，避免图片加载前后布局跳动。
+```
+
+示例：
+
+```html
+<!-- 首屏关键图 -->
+<img
+  src="https://yourdomain.com/vimage_001_brutalist-concrete-museum.jpg?w=1200&q=80"
+  alt="野兽派混凝土博物馆外立面"
+  width="1200"
+  height="760"
+  decoding="async"
+  fetchpriority="high"
+>
+
+<!-- 非首屏图片 -->
+<img
+  src="https://yourdomain.com/vimage_008_civic-plaza-concrete-canopy.jpg?w=640&q=74"
+  alt="公共广场混凝土顶棚"
+  width="640"
+  height="420"
+  loading="lazy"
+  decoding="async"
+>
+```
 
 ### 实际效果示例
 
@@ -169,6 +217,36 @@ ADMIN_COOKIE_SECURE=true
 ```
 
 浏览器会自动跟随302重定向，加载实际的Unsplash图片。
+
+### 在图片较多的页面中使用
+
+首屏主图可以优先加载：
+
+```html
+<img
+  src="http://localhost:7749/vimage_001_brutalist-concrete-museum.jpg?w=960&q=78"
+  alt="野兽派混凝土博物馆外立面"
+  width="960"
+  height="620"
+  decoding="async"
+  fetchpriority="high"
+>
+```
+
+列表、画廊、卡片等非首屏图片建议懒加载：
+
+```html
+<img
+  src="http://localhost:7749/vimage_009_architect-portrait-studio.jpg?w=420&q=72"
+  alt="建筑师在工作室中的肖像"
+  width="420"
+  height="315"
+  loading="lazy"
+  decoding="async"
+>
+```
+
+如果同一个页面有很多图片，优先控制首屏只加载 1-3 张关键图，其余图片都使用 `loading="lazy"`。这能让页面文本、布局和交互先出现，图片在接近可视区域时再请求。
 
 ### URL格式
 
@@ -225,6 +303,7 @@ http://your-domain.com/vimage_{序号}_{描述词}.{扩展名}
 | `ADMIN_SESSION_TTL` | 后台登录有效期（秒） | `43200` |
 | `ADMIN_COOKIE_SECURE` | 是否给登录 Cookie 添加 Secure 标记 | `false` |
 | `CACHE_TTL` | 缓存过期时间（秒） | `43200`（12小时） |
+| `REDIRECT_CACHE_TTL` | 图片302重定向的浏览器/CDN缓存时间（秒） | `43200` |
 | `UNSPLASH_RATE_LIMIT` | 速率限制（请求/小时） | `4800` |
 | `DB_PATH` | SQLite数据库路径 | `./data/vimage.db` |
 
@@ -239,6 +318,13 @@ http://your-domain.com/vimage_{序号}_{描述词}.{扩展名}
 GET /vimage_001_cute-cat.jpg
 → 302 Redirect to https://images.unsplash.com/photo-xxx
 ```
+
+**可选参数：**
+- `w`：图片宽度，范围 `80-2400`，例如 `?w=640`
+- `h`：Picsum兜底图片高度，范围 `80-2400`
+- `q`：Unsplash图片质量，范围 `1-100`，例如 `?q=75`
+
+服务会为图片重定向响应添加 `Cache-Control`，让浏览器和CDN缓存同一个 vimage URL 的 302 结果，减少重复访问时的搜索和重定向开销。
 
 ### GET /api/stats
 

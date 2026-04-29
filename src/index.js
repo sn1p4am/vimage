@@ -73,6 +73,11 @@ app.use((err, req, res, next) => {
 
   // 对于图片请求，返回Picsum随机图片
   if (req.path.startsWith('/vimage_')) {
+    const cacheTtl = parseInt(process.env.REDIRECT_CACHE_TTL, 10)
+      || parseInt(process.env.CACHE_TTL, 10)
+      || 43200;
+
+    res.set('Cache-Control', `public, max-age=${cacheTtl}, s-maxage=${cacheTtl}, stale-while-revalidate=86400`);
     return res.redirect(302, `https://picsum.photos/1200/800?random=${Date.now()}`);
   }
 

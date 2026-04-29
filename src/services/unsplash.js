@@ -51,16 +51,73 @@ async function searchPhotos(query) {
   }
 }
 
+function getPositiveInteger(value) {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+  const parsed = parseInt(rawValue, 10);
+
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function clamp(value, min, max) {
+  if (!value) {
+    return null;
+  }
+
+  return Math.min(max, Math.max(min, value));
+}
+
+/**
+ * 按请求参数调整图片尺寸和质量。
+ * 支持 ?w=640&q=75，减少列表页和画廊页的图片体积。
+ *
+ * @param {string} url - 原始图片URL
+ * @param {object} options - 请求查询参数
+ * @returns {string} 调整后的图片URL
+ */
+function optimizeImageUrl(url, options = {}) {
+  const width = clamp(getPositiveInteger(options.w), 80, 2400);
+  const quality = clamp(getPositiveInteger(options.q), 1, 100);
+
+  if (!width && !quality) {
+    return url;
+  }
+
+  try {
+    const parsedUrl = new URL(url);
+
+    if (parsedUrl.hostname.endsWith('images.unsplash.com')) {
+      if (width) {
+        parsedUrl.searchParams.set('w', width.toString());
+      }
+
+      if (quality) {
+        parsedUrl.searchParams.set('q', quality.toString());
+      }
+
+      return parsedUrl.toString();
+    }
+  } catch (error) {
+    return url;
+  }
+
+  return url;
+}
+
 /**
  * 生成Picsum随机图片URL
+ * @param {object} options - 请求查询参数
  * @returns {string} Picsum图片URL
  */
-function getPicsumRandomUrl() {
+function getPicsumRandomUrl(options = {}) {
+  const width = clamp(getPositiveInteger(options.w), 80, 2400) || 1200;
+  const height = clamp(getPositiveInteger(options.h), 80, 2400) || Math.round(width * 2 / 3);
+
   // 使用时间戳确保每次都是不同的随机图片
-  return `https://picsum.photos/1200/800?random=${Date.now()}`;
+  return `https://picsum.photos/${width}/${height}?random=${Date.now()}`;
 }
 
 module.exports = {
   searchPhotos,
-  getPicsumRandomUrl
+  getPicsumRandomUrl,
+  optimizeImageUrl
 };

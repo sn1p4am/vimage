@@ -51,7 +51,7 @@ function logRequest(logData) {
       success: logData.success ? 1 : 0,
       final_url: logData.final_url || null,
       source: logData.source || null,
-      response_time: logData.response_time || null,
+      response_time: logData.response_time ?? null,
       error_message: logData.error_message || null,
       from_cache: logData.from_cache ? 1 : 0
     });

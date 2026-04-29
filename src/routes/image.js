@@ -9,9 +9,13 @@ const router = express.Router();
 const { parseImageUrl, descriptionToQuery } = require('../utils/urlParser');
 const { getCachedImage, setCachedImage } = require('../services/cache');
 const { isRateLimitReached, incrementRequestCount } = require('../services/rateLimit');
-const { searchPhotos, getPicsumRandomUrl } = require('../services/unsplash');
+const { searchPhotos, getPicsumRandomUrl, optimizeImageUrl } = require('../services/unsplash');
 const { getLLMSynonym } = require('../services/llm');
 const { logRequest } = require('../db/logger');
+
+const REDIRECT_CACHE_TTL = parseInt(process.env.REDIRECT_CACHE_TTL, 10)
+  || parseInt(process.env.CACHE_TTL, 10)
+  || 43200;
 
 /**
  * 延迟辅助函数
@@ -20,6 +24,11 @@ const { logRequest } = require('../db/logger');
  */
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function redirectToImage(res, url) {
+  res.set('Cache-Control', `public, max-age=${REDIRECT_CACHE_TTL}, s-maxage=${REDIRECT_CACHE_TTL}, stale-while-revalidate=86400`);
+  return res.redirect(302, url);
 }
 
 /**
@@ -141,19 +150,19 @@ router.get('/:filename', async (req, res) => {
       logData.response_time = Date.now() - startTime;
 
       logRequest(logData);
-      return res.redirect(302, cached.url);
+      return redirectToImage(res, optimizeImageUrl(cached.url, req.query));
     }
 
     // 3. 检查速率限制
     if (isRateLimitReached()) {
-      const url = getPicsumRandomUrl();
+      const url = getPicsumRandomUrl(req.query);
       logData.success = true;
       logData.final_url = url;
       logData.source = 'picsum-rate-limit';
       logData.response_time = Date.now() - startTime;
 
       logRequest(logData);
-      return res.redirect(302, url);
+      return redirectToImage(res, url);
     }
 
     // 4. 尝试搜索图片（包含LLM重试和指数退避）
@@ -166,23 +175,20 @@ router.get('/:filename', async (req, res) => {
       logData.source = searchResult.source;
       logData.response_time = Date.now() - startTime;
 
-      // 缓存结果（仅缓存原始描述词的结果）
-      if (logData.retry_count === 0) {
-        setCachedImage(description, searchResult.url);
-      }
+      setCachedImage(description, searchResult.url);
 
       logRequest(logData);
-      return res.redirect(302, searchResult.url);
+      return redirectToImage(res, optimizeImageUrl(searchResult.url, req.query));
     } else {
       // 全部失败，使用Picsum兜底
-      const url = getPicsumRandomUrl();
+      const url = getPicsumRandomUrl(req.query);
       logData.success = false;
       logData.final_url = url;
       logData.source = 'picsum-all-failed';
       logData.response_time = Date.now() - startTime;
 
       logRequest(logData);
-      return res.redirect(302, url);
+      return redirectToImage(res, url);
     }
 
   } catch (error) {
@@ -193,12 +199,12 @@ router.get('/:filename', async (req, res) => {
     logData.response_time = Date.now() - startTime;
 
     // 错误时使用Picsum兜底
-    const url = getPicsumRandomUrl();
+    const url = getPicsumRandomUrl(req.query);
     logData.final_url = url;
     logData.source = 'picsum-error';
 
     logRequest(logData);
-    return res.redirect(302, url);
+    return redirectToImage(res, url);
   }
 });
 
