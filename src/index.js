@@ -9,14 +9,20 @@ const path = require('path');
 
 const imageRouter = require('./routes/image');
 const apiRouter = require('./routes/api');
-const basicAuth = require('./middleware/basicAuth');
+const {
+  requireAdminAuth,
+  showLoginPage,
+  handleLogin,
+  handleLogout
+} = require('./middleware/adminAuth');
 
 const app = express();
 const PORT = process.env.PORT || 7749;
 
 // 中间件
 app.use(express.json());
-app.use(['/dashboard', '/dashboard.html', '/api/logs'], basicAuth);
+app.use(express.urlencoded({ extended: false }));
+app.use(['/dashboard', '/dashboard.html', '/api/logs'], requireAdminAuth);
 app.use(express.static(path.join(__dirname, 'public')));
 
 // 请求日志中间件
@@ -30,6 +36,10 @@ app.use((req, res, next) => {
 app.get('/favicon.ico', (req, res) => {
   res.status(204).end();
 });
+
+app.get('/login', showLoginPage);
+app.post('/login', handleLogin);
+app.post('/logout', handleLogout);
 
 app.get('/dashboard', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));

@@ -26,6 +26,7 @@
     }
 
     .header {
+      position: relative;
       text-align: center;
       margin-bottom: 2.5rem;
       animation: fadeInDown 0.6s ease-out;
@@ -42,6 +43,30 @@
     .header p {
       color: rgba(255,255,255,0.9);
       font-size: 1rem;
+    }
+
+    .logout-form {
+      position: absolute;
+      top: 0;
+      right: 0;
+    }
+
+    .logout-btn {
+      min-width: 82px;
+      min-height: 38px;
+      border: 1px solid rgba(255,255,255,0.5);
+      border-radius: 8px;
+      background: rgba(255,255,255,0.18);
+      color: #fff;
+      font-size: 0.875rem;
+      font-weight: 650;
+      cursor: pointer;
+      transition: background 0.2s ease, transform 0.2s ease;
+    }
+
+    .logout-btn:hover {
+      background: rgba(255,255,255,0.28);
+      transform: translateY(-1px);
     }
 
     .stats-grid {
@@ -390,6 +415,11 @@
         font-size: 1.75rem;
       }
 
+      .logout-form {
+        position: static;
+        margin-top: 1rem;
+      }
+
       .stats-grid {
         grid-template-columns: 1fr;
       }
@@ -414,6 +444,9 @@
     <div class="header">
       <h1>📊 Vimage 监控面板</h1>
       <p>实时监控图片代理服务状态</p>
+      <form class="logout-form" method="post" action="/logout">
+        <button class="logout-btn" type="submit">退出</button>
+      </form>
     </div>
 
     <div class="stats-grid">
@@ -574,6 +607,11 @@
     async function loadLogs() {
       try {
         const response = await fetch('/api/logs?page=' + currentPage + '&limit=' + pageSize);
+        if (response.status === 401) {
+          window.location.href = '/login?redirect=/dashboard';
+          return;
+        }
+
         const data = await response.json();
 
         totalLogs = data.total || 0;

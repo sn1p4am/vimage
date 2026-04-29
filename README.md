@@ -26,17 +26,23 @@ cd vimage
 2. **配置环境变量**
 ```bash
 cp .env.example .env
-# 编辑 .env 文件，填入你的API密钥
+# 编辑 .env 文件，填入 API 密钥和后台登录密码
 ```
 
 3. **启动服务**
 ```bash
-docker-compose up -d
+docker compose up -d --build
 ```
 
 4. **访问服务**
 - 图片代理：`http://localhost:7749/vimage_001_cute-cat.jpg`
-- 监控面板：`http://localhost:7749/dashboard`
+- 监控面板：`http://localhost:7749/dashboard`（使用 `.env` 中的 `ADMIN_USERNAME` / `ADMIN_PASSWORD` 登录）
+
+5. **查看状态和日志**
+```bash
+docker compose ps
+docker logs -f vimage-service
+```
 
 ### 方式二：本地运行
 
@@ -48,7 +54,7 @@ npm install
 2. **配置环境变量**
 ```bash
 cp .env.example .env
-# 编辑 .env 文件
+# 编辑 .env 文件，填入 API 密钥和后台登录密码
 ```
 
 3. **启动服务**
@@ -58,6 +64,52 @@ npm run dev
 
 # 生产模式
 npm start
+```
+
+> 本地运行建议使用 Node.js 20.x。项目依赖 `better-sqlite3` 原生模块，Node.js 大版本不匹配时需要重新安装依赖。
+
+## 部署说明
+
+### 必填配置
+
+部署前至少需要配置：
+
+```env
+UNSPLASH_ACCESS_KEY=your_unsplash_key_here
+DASHSCOPE_API_KEY=your_dashscope_key_here
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=change_me_to_a_strong_password
+```
+
+### Docker Compose 部署
+
+```bash
+git clone <your-repo-url>
+cd vimage
+cp .env.example .env
+# 编辑 .env
+docker compose up -d --build
+```
+
+更新代码后重新部署：
+
+```bash
+git pull
+docker compose up -d --build
+```
+
+停止服务：
+
+```bash
+docker compose down
+```
+
+### 公网部署
+
+推荐用 Nginx、Caddy 或其他反向代理把域名转发到 `127.0.0.1:7749`，并开启 HTTPS。后台登录使用 cookie 保存登录态，公网环境建议在 HTTPS 下把 `.env` 设置为：
+
+```env
+ADMIN_COOKIE_SECURE=true
 ```
 
 ## 🤖 在 AI 提示词中使用（推荐）
@@ -167,10 +219,11 @@ http://your-domain.com/vimage_{序号}_{描述词}.{扩展名}
 | `DASHSCOPE_API_BASE` | 阿里百炼 OpenAI 兼容接口地址 | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
 | `PORT` | 服务端口 | `7749` |
 | `NODE_ENV` | 运行环境 | `development` |
-| `BASIC_AUTH_ENABLED` | 是否启用Basic Auth保护管理入口 | `true` |
-| `BASIC_AUTH_USERNAME` | Basic Auth用户名 | `admin` |
-| `BASIC_AUTH_PASSWORD` | Basic Auth密码 | 必填 |
-| `BASIC_AUTH_REALM` | 浏览器认证弹窗显示的区域名 | `Vimage` |
+| `ADMIN_AUTH_ENABLED` | 是否启用后台登录保护 | `true` |
+| `ADMIN_USERNAME` | 后台登录用户名 | `admin` |
+| `ADMIN_PASSWORD` | 后台登录密码 | 必填 |
+| `ADMIN_SESSION_TTL` | 后台登录有效期（秒） | `43200` |
+| `ADMIN_COOKIE_SECURE` | 是否给登录 Cookie 添加 Secure 标记 | `false` |
 | `CACHE_TTL` | 缓存过期时间（秒） | `43200`（12小时） |
 | `UNSPLASH_RATE_LIMIT` | 速率限制（请求/小时） | `4800` |
 | `DB_PATH` | SQLite数据库路径 | `./data/vimage.db` |
@@ -213,7 +266,7 @@ GET /vimage_001_cute-cat.jpg
 
 ### GET /api/logs?page=1&limit=20
 
-获取请求日志（分页）。
+获取请求日志（分页），需要先登录后台。
 
 **参数：**
 - `page`：页码（从1开始）
@@ -243,7 +296,7 @@ GET /vimage_001_cute-cat.jpg
 
 ### GET /dashboard
 
-Web监控面板，可视化展示统计信息和日志。
+Web监控面板，可视化展示统计信息和日志。未登录时会跳转到 `/login`。
 
 ## 技术栈
 
@@ -263,6 +316,8 @@ vimage/
 │   ├── routes/
 │   │   ├── image.js          # 主功能路由
 │   │   └── api.js            # API路由
+│   ├── middleware/
+│   │   └── adminAuth.js      # 后台登录鉴权
 │   ├── services/
 │   │   ├── unsplash.js       # Unsplash API
 │   │   ├── llm.js            # LLM服务
@@ -274,7 +329,8 @@ vimage/
 │   ├── utils/
 │   │   └── urlParser.js      # URL解析
 │   └── public/
-│       └── dashboard.html    # 监控面板
+│       ├── dashboard.html    # 监控面板
+│       └── login.html        # 后台登录页
 ├── data/                     # 数据库文件（Docker挂载）
 ├── docs/                     # 文档
 ├── .env.example              # 环境变量模板
