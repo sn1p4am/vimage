@@ -5,6 +5,18 @@
 
 const db = require('./init');
 
+const LOG_TYPES = Object.freeze({
+  ALL: 'all',
+  IMAGE: 'image',
+  ERROR: 'error'
+});
+
+const LOG_FILTERS = Object.freeze({
+  [LOG_TYPES.ALL]: '1 = 1',
+  [LOG_TYPES.IMAGE]: 'query_term IS NOT NULL',
+  [LOG_TYPES.ERROR]: 'query_term IS NULL'
+});
+
 /**
  * 记录请求日志
  * @param {Object} logData - 日志数据
@@ -65,23 +77,53 @@ function logRequest(logData) {
  * 获取请求日志（分页）
  * @param {number} page - 页码（从1开始）
  * @param {number} limit - 每页数量
- * @returns {{total: number, data: Array}} 日志数据
+ * @param {'all'|'image'|'error'} type - 日志类型
+ * @returns {{total: number, data: Array, page: number, limit: number, type: string}} 日志数据
  */
-function getLogs(page = 1, limit = 20) {
+function getLogs(page = 1, limit = 20, type = LOG_TYPES.ALL) {
   const offset = (page - 1) * limit;
+  const normalizedType = Object.hasOwn(LOG_FILTERS, type) ? type : LOG_TYPES.ALL;
+  const whereClause = LOG_FILTERS[normalizedType];
 
-  const countStmt = db.prepare('SELECT COUNT(*) as total FROM request_logs');
+  const countStmt = db.prepare(`
+    SELECT COUNT(*) as total
+    FROM request_logs
+    WHERE ${whereClause}
+  `);
   const total = countStmt.get().total;
 
   const stmt = db.prepare(`
-    SELECT * FROM request_logs
-    ORDER BY timestamp DESC
+    SELECT
+      id,
+      timestamp,
+      original_url,
+      query_term,
+      retry_count,
+      retry_1_term,
+      retry_2_term,
+      retry_3_term,
+      success,
+      CASE WHEN query_term IS NULL THEN NULL ELSE final_url END AS final_url,
+      CASE WHEN query_term IS NULL THEN NULL ELSE source END AS source,
+      response_time,
+      error_message,
+      from_cache
+    FROM request_logs
+    WHERE ${whereClause}
+    ORDER BY timestamp DESC, id DESC
     LIMIT ? OFFSET ?
   `);
 
   const data = stmt.all(limit, offset);
 
-  return { total, data, page, limit };
+  return {
+    total,
+    data,
+    page,
+    limit,
+    type: normalizedType,
+    totalPages: total > 0 ? Math.ceil(total / limit) : 0
+  };
 }
 
 /**
@@ -89,28 +131,31 @@ function getLogs(page = 1, limit = 20) {
  * @returns {Object} 统计数据
  */
 function getStats() {
-  // 总请求数
-  const totalStmt = db.prepare('SELECT COUNT(*) as total FROM request_logs');
-  const totalRequests = totalStmt.get().total;
-
-  // 成功率
-  const successStmt = db.prepare('SELECT COUNT(*) as total FROM request_logs WHERE success = 1');
-  const successCount = successStmt.get().total;
-  const successRate = totalRequests > 0 ? (successCount / totalRequests * 100).toFixed(1) : 0;
-
-  // 缓存命中率
-  const cacheStmt = db.prepare('SELECT COUNT(*) as total FROM request_logs WHERE from_cache = 1');
-  const cacheCount = cacheStmt.get().total;
-  const cacheHitRate = totalRequests > 0 ? (cacheCount / totalRequests * 100).toFixed(1) : 0;
-
-  // 平均响应时间
-  const avgTimeStmt = db.prepare('SELECT AVG(response_time) as avg FROM request_logs WHERE response_time IS NOT NULL');
-  const avgResponseTime = Math.round(avgTimeStmt.get().avg || 0);
+  const aggregateStmt = db.prepare(`
+    SELECT
+      COUNT(*) AS total_logged_requests,
+      SUM(CASE WHEN query_term IS NOT NULL THEN 1 ELSE 0 END) AS image_requests,
+      SUM(CASE WHEN query_term IS NULL THEN 1 ELSE 0 END) AS error_requests,
+      SUM(CASE WHEN query_term IS NOT NULL AND success = 1 THEN 1 ELSE 0 END) AS success_count,
+      SUM(CASE WHEN query_term IS NOT NULL AND from_cache = 1 THEN 1 ELSE 0 END) AS cache_hit_count,
+      AVG(CASE WHEN query_term IS NOT NULL THEN response_time END) AS avg_response_time
+    FROM request_logs
+  `);
+  const aggregate = aggregateStmt.get();
+  const imageRequests = aggregate.image_requests || 0;
+  const errorRequests = aggregate.error_requests || 0;
+  const successCount = aggregate.success_count || 0;
+  const cacheHitCount = aggregate.cache_hit_count || 0;
+  const cacheMissCount = Math.max(0, imageRequests - cacheHitCount);
+  const successRate = toPercentage(successCount, imageRequests);
+  const cacheHitRate = toPercentage(cacheHitCount, imageRequests);
+  const avgResponseTime = Math.round(aggregate.avg_response_time || 0);
 
   // 来源分布
   const sourceStmt = db.prepare(`
     SELECT source, COUNT(*) as count
     FROM request_logs
+    WHERE query_term IS NOT NULL AND source IS NOT NULL
     GROUP BY source
   `);
   const sources = sourceStmt.all();
@@ -120,16 +165,28 @@ function getStats() {
   });
 
   return {
-    totalRequests,
-    successRate: parseFloat(successRate),
-    cacheHitRate: parseFloat(cacheHitRate),
+    // totalRequests keeps its original all-logs meaning for existing API consumers.
+    totalRequests: aggregate.total_logged_requests || 0,
+    totalLoggedRequests: aggregate.total_logged_requests || 0,
+    imageRequests,
+    errorRequests,
+    successCount,
+    successRate,
+    cacheHitCount,
+    cacheMissCount,
+    cacheHitRate,
     avgResponseTime,
     sourcesDistribution
   };
 }
 
+function toPercentage(value, total) {
+  return total > 0 ? Number((value / total * 100).toFixed(1)) : 0;
+}
+
 module.exports = {
   logRequest,
   getLogs,
-  getStats
+  getStats,
+  LOG_TYPES
 };

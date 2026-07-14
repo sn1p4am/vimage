@@ -41,7 +41,17 @@ function setCachedImage(description, url) {
  * @returns {{keys: number, hits: number, misses: number, ksize: number, vsize: number}}
  */
 function getCacheStats() {
-  return imageCache.getStats();
+  const stats = imageCache.getStats();
+  const lookups = stats.hits + stats.misses;
+
+  return {
+    ...stats,
+    activeEntries: stats.keys,
+    processHits: stats.hits,
+    processMisses: stats.misses,
+    processHitRate: lookups > 0 ? Number((stats.hits / lookups * 100).toFixed(1)) : 0,
+    ttlSeconds: CACHE_TTL
+  };
 }
 
 /**

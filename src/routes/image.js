@@ -136,11 +136,23 @@ router.get('/:filename', async (req, res) => {
   };
 
   try {
-    // 1. 解析URL
     const { description } = parseImageUrl(filename);
     logData.query_term = description;
+  } catch (error) {
+    logData.error_message = error.message;
+    logData.response_time = Date.now() - startTime;
+    logRequest(logData);
 
-    // 2. 检查缓存
+    return res.status(404).json({
+      error: 'Not Found',
+      message: 'The requested resource was not found'
+    });
+  }
+
+  try {
+    const description = logData.query_term;
+
+    // 1. 检查缓存
     const cached = getCachedImage(description);
     if (cached) {
       logData.success = true;
@@ -153,10 +165,10 @@ router.get('/:filename', async (req, res) => {
       return redirectToImage(res, optimizeImageUrl(cached.url, req.query));
     }
 
-    // 3. 检查速率限制
+    // 2. 检查速率限制
     if (isRateLimitReached()) {
       const url = getPicsumRandomUrl(req.query);
-      logData.success = true;
+      logData.success = false;
       logData.final_url = url;
       logData.source = 'picsum-rate-limit';
       logData.response_time = Date.now() - startTime;
@@ -165,7 +177,7 @@ router.get('/:filename', async (req, res) => {
       return redirectToImage(res, url);
     }
 
-    // 4. 尝试搜索图片（包含LLM重试和指数退避）
+    // 3. 尝试搜索图片（包含LLM重试和指数退避）
     const searchResult = await trySearchWithRetries(description, logData);
 
     if (searchResult) {

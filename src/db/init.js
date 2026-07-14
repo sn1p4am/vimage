@@ -57,8 +57,14 @@ function initDatabase() {
     ON request_logs(timestamp DESC)
   `;
 
+  const createPaginationIndexSQL = `
+    CREATE INDEX IF NOT EXISTS idx_timestamp_id
+    ON request_logs(timestamp DESC, id DESC)
+  `;
+
   db.exec(createTableSQL);
   db.exec(createIndexSQL);
+  db.exec(createPaginationIndexSQL);
 
   console.log('Database initialized successfully');
 }

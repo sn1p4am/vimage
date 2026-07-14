@@ -1,13 +1,13 @@
 # Vimage - AI 生成内容配图神器 🎨
 
-> **让 AI 生成的内容拥有精美配图，100% 可用，零失败！**
+> **让 AI 生成的内容拥有稳定、清晰且可控的配图能力。**
 
-一个专为 AI 生成内容设计的智能图片代理服务。当 AI 生成文章、博客或报告时，通过简单的 URL 规则即可自动匹配高质量 Unsplash 图片。结合 LLM 智能重试和 Picsum 兜底机制，**确保每次请求都能返回精美且可用的图片**。
+一个专为 AI 生成内容设计的智能图片代理服务。当 AI 生成文章、博客或报告时，通过简单的 URL 规则即可自动匹配高质量 Unsplash 图片。合法格式的图片请求结合 LLM 智能重试和 Picsum 兜底机制，尽可能稳定地返回可用图片。
 
 ## ✨ 为什么选择 Vimage？
 
 - 🎯 **AI 配图完美方案** - 专为 Claude、ChatGPT 等 AI 生成内容设计，一行提示词规则即可使用
-- 🖼️ **100% 可用保证** - LLM 智能重试 + Picsum 兜底，绝不返回 404
+- 🖼️ **图片请求高可用** - 合法格式请求使用 LLM 智能重试 + Picsum 兜底
 - 🎨 **图片质量保证** - 优先使用 Unsplash 专业摄影作品，视觉效果出众
 - ⚡ **即插即用** - 无需额外配置，AI 直接在输出中生成图片 URL
 - 🔄 **智能重试** - 找不到图片？LLM 自动生成同义词再试 3 次
@@ -150,7 +150,7 @@ ADMIN_COOKIE_SECURE=true
 - ✅ **零配置** - AI 无需学习复杂的图片搜索 API
 - ✅ **语义理解** - AI 擅长从上下文提取关键词
 - ✅ **失败容错** - 即使描述词不准确，LLM 重试机制也能找到相关图片
-- ✅ **100% 成功** - Picsum 兜底确保永远不会出现图片加载失败
+- ✅ **稳定兜底** - 合法格式的图片请求在搜索失败时切换到 Picsum
 
 ### URL格式
 
@@ -230,6 +230,8 @@ GET /vimage_001_cute-cat.jpg
 
 服务会为图片重定向响应添加 `Cache-Control`，让浏览器和CDN缓存同一个 vimage URL 的 302 结果，减少重复访问时的搜索和重定向开销。
 
+不符合上述格式的单段路径会记录为错误请求并返回 `404`，不会调用 Unsplash、LLM 或 Picsum，也不会计入图片请求统计。
+
 ### GET /api/stats
 
 获取服务统计信息。
@@ -237,30 +239,49 @@ GET /vimage_001_cute-cat.jpg
 **响应示例：**
 ```json
 {
-  "totalRequests": 1234,
-  "successRate": 95.2,
-  "cacheHitRate": 78.5,
-  "avgResponseTime": 245,
+  "totalRequests": 9472,
+  "totalLoggedRequests": 9472,
+  "imageRequests": 8240,
+  "errorRequests": 1232,
+  "successCount": 8235,
+  "successRate": 99.9,
+  "cacheHitCount": 3850,
+  "cacheMissCount": 4390,
+  "cacheHitRate": 46.7,
+  "avgResponseTime": 715,
   "sourcesDistribution": {
-    "unsplash": 500,
-    "cache": 600,
-    "picsum-llm-failed": 34
+    "unsplash": 4200,
+    "cache": 3850,
+    "unsplash-retry-1": 150,
+    "unsplash-retry-2": 30,
+    "unsplash-retry-3": 5,
+    "picsum-all-failed": 5
   },
   "rateLimitStatus": {
     "current": 1523,
     "limit": 4800,
     "resetIn": 1800
+  },
+  "cacheStats": {
+    "activeEntries": 17,
+    "processHits": 2037,
+    "processMisses": 2322,
+    "processHitRate": 46.7,
+    "ttlSeconds": 43200
   }
 }
 ```
 
-### GET /api/logs?page=1&limit=20
+`successRate` 表示由 Unsplash 或缓存完成匹配的有效图片请求占比，Picsum 兜底不算匹配成功。`cacheHitRate` 和 `avgResponseTime` 同样只统计格式正确的图片请求。`cacheStats.activeEntries` 表示当前进程中尚未过期的缓存条目；`processHits`、`processMisses` 和 `processHitRate` 从本次进程启动后开始计数，服务重启后归零。
+
+### GET /api/logs?page=1&limit=20&type=image
 
 获取请求日志（分页），需要先登录后台。
 
 **参数：**
 - `page`：页码（从1开始）
-- `limit`：每页数量
+- `limit`：每页数量，最大100
+- `type`：日志类型，可选 `all`、`image` 或 `error`；默认 `all`
 
 **响应示例：**
 ```json
@@ -268,6 +289,8 @@ GET /vimage_001_cute-cat.jpg
   "total": 1234,
   "page": 1,
   "limit": 20,
+  "type": "image",
+  "totalPages": 62,
   "data": [
     {
       "id": 1,
@@ -286,7 +309,7 @@ GET /vimage_001_cute-cat.jpg
 
 ### GET /dashboard
 
-Web监控面板，可视化展示统计信息和日志。未登录时会跳转到 `/login`。
+Web监控面板，可视化展示有效图片请求指标、当前缓存状态和分类日志。图片请求与格式错误请求可以独立切换，未登录时会跳转到 `/login`。
 
 ## 技术栈
 
