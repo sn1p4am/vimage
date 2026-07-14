@@ -250,6 +250,8 @@ GET /vimage_001_cute-cat.jpg
   "unsplashMatchCount": 4385,
   "directUnsplashRate": 95.8,
   "rewrittenUnsplashRate": 4.2,
+  "directUnsplashAvgResponseTime": 707,
+  "rewrittenUnsplashAvgResponseTime": 9733,
   "avgResponseTime": 715,
   "sourcesDistribution": {
     "unsplash": 4200,
@@ -281,7 +283,7 @@ GET /vimage_001_cute-cat.jpg
 
 `avgResponseTime` 从图片路由开始处理计时，到重定向目标确定并完成应用缓存读写为止；不包含请求日志写入、302 响应在网络中的传输，以及浏览器随后下载最终图片的时间。
 
-`directUnsplashCount` 表示原查询词直接匹配 Unsplash 的次数，`rewrittenUnsplashCount` 表示换词后匹配的次数。换词通常由单次 LLM 请求生成，LLM 不可用时会使用本地简化词兜底。两者之和是 `unsplashMatchCount`；`directUnsplashRate` 和 `rewrittenUnsplashRate` 仅以成功的 Unsplash 匹配为分母，不包含缓存命中、Picsum 兜底或失败请求。
+`directUnsplashCount` 表示原查询词直接匹配 Unsplash 的次数，`rewrittenUnsplashCount` 表示换词后匹配的次数。换词通常由单次 LLM 请求生成，LLM 不可用时会使用本地简化词兜底。两者之和是 `unsplashMatchCount`；`directUnsplashRate` 和 `rewrittenUnsplashRate` 仅以成功的 Unsplash 匹配为分母，不包含缓存命中、Picsum 兜底或失败请求。`directUnsplashAvgResponseTime` 与 `rewrittenUnsplashAvgResponseTime` 分别给出这两类成功请求的平均处理时间，没有样本时返回 `null`。
 
 缓存使用两级结构：`activeEntries` 是当前内存 L1 中尚未过期的条目，`persistentEntries` 是 SQLite L2 中尚未过期且可跨服务重启复用的条目。`memoryHits` 和 `persistentHits` 分别统计本次运行中命中 L1、L2 的次数；`processHits` 是二者之和，`processMisses` 表示两层均未命中，`processHitRate` 按 `processHits / (processHits + processMisses)` 计算。运行期命中计数在服务重启后归零，数据库历史中的 `cacheHitCount` 不受影响。
 

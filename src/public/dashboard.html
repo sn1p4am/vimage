@@ -1098,17 +1098,17 @@
 
         <article class="metric-card">
           <div class="metric-label">
-            <span>平均响应时间</span>
+            <span>全部有效请求平均耗时</span>
             <span class="metric-accent" aria-hidden="true"></span>
           </div>
           <div class="metric-value" id="avgResponseTime">-</div>
-          <p class="metric-note">格式错误请求不计入平均值</p>
+          <p class="metric-note">包含缓存与 Picsum 兜底</p>
         </article>
       </div>
 
       <section class="match-summary" aria-labelledby="matchSummaryTitle">
         <div class="match-summary-copy">
-          <h2 id="matchSummaryTitle">Unsplash 匹配构成</h2>
+          <h2 id="matchSummaryTitle">Unsplash 匹配与耗时</h2>
           <p id="unsplashMatchTotal">只统计成功返回 Unsplash 图片的请求，缓存不参与占比</p>
         </div>
         <div class="match-results">
@@ -1117,14 +1117,14 @@
               <span class="match-item-label">原词直接命中</span>
               <div class="match-item-value">
                 <strong id="directUnsplashRate">-</strong>
-                <span id="directUnsplashCount">- 次</span>
+                <span id="directUnsplashCount">- 次 · 累计平均 -</span>
               </div>
             </div>
             <div class="match-item">
               <span class="match-item-label">换词后命中</span>
               <div class="match-item-value">
                 <strong id="rewrittenUnsplashRate">-</strong>
-                <span id="rewrittenUnsplashCount">- 次</span>
+                <span id="rewrittenUnsplashCount">- 次 · 累计平均 -</span>
               </div>
             </div>
           </div>
@@ -1432,10 +1432,12 @@
         ? '共 ' + formatNumber(unsplashMatchCount) + ' 次成功匹配 · 缓存不参与占比'
         : '暂无成功的 Unsplash 匹配，缓存不参与占比';
       elements.directUnsplashRate.textContent = formatPercent(directUnsplashRate);
-      elements.directUnsplashCount.textContent = formatNumber(directUnsplashCount) + ' 次';
+      elements.directUnsplashCount.textContent = formatNumber(directUnsplashCount)
+        + ' 次 · 累计平均 ' + formatDuration(data.directUnsplashAvgResponseTime);
       elements.directUnsplashProgress.style.width = directUnsplashProgress + '%';
       elements.rewrittenUnsplashRate.textContent = formatPercent(rewrittenUnsplashRate);
-      elements.rewrittenUnsplashCount.textContent = formatNumber(rewrittenUnsplashCount) + ' 次';
+      elements.rewrittenUnsplashCount.textContent = formatNumber(rewrittenUnsplashCount)
+        + ' 次 · 累计平均 ' + formatDuration(data.rewrittenUnsplashAvgResponseTime);
       elements.rewrittenUnsplashProgress.style.width = rewrittenUnsplashProgress + '%';
 
       const current = Number(rateLimit.current || 0);

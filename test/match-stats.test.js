@@ -28,7 +28,7 @@ function createLog(overrides = {}) {
   };
 }
 
-test('Unsplash match rates exclude cache, fallback, and failed searches', t => {
+test('Unsplash match rates and response times exclude non-matching requests', t => {
   t.after(() => {
     db.close();
     fs.rmSync(testDirectory, { recursive: true, force: true });
@@ -38,6 +38,8 @@ test('Unsplash match rates exclude cache, fallback, and failed searches', t => {
   assert.equal(emptyStats.unsplashMatchCount, 0);
   assert.equal(emptyStats.directUnsplashRate, 0);
   assert.equal(emptyStats.rewrittenUnsplashRate, 0);
+  assert.equal(emptyStats.directUnsplashAvgResponseTime, null);
+  assert.equal(emptyStats.rewrittenUnsplashAvgResponseTime, null);
 
   logRequest(createLog());
   logRequest(createLog({ original_url: 'vimage_002_direct.jpg' }));
@@ -46,27 +48,42 @@ test('Unsplash match rates exclude cache, fallback, and failed searches', t => {
     original_url: 'vimage_004_rewritten.jpg',
     retry_count: 1,
     retry_1_term: 'rewritten',
-    source: 'unsplash-retry-1'
+    source: 'unsplash-retry-1',
+    response_time: 120
   }));
   logRequest(createLog({
     original_url: 'vimage_005_cached.jpg',
     source: 'cache',
-    from_cache: true
+    from_cache: true,
+    response_time: 1
   }));
   logRequest(createLog({
     original_url: 'vimage_006_fallback.jpg',
     success: false,
-    source: 'picsum-all-failed'
+    source: 'picsum-all-failed',
+    response_time: 900
   }));
   logRequest(createLog({
     original_url: 'vimage_007_failed-rewrite.jpg',
     retry_count: 2,
     source: 'unsplash-retry-2',
-    success: false
+    success: false,
+    response_time: 600
   }));
   for (let index = 0; index < 12; index += 1) {
     logRequest(createLog({ original_url: `vimage_${String(index + 8).padStart(3, '0')}_direct.jpg` }));
   }
+  logRequest(createLog({
+    original_url: 'vimage_020_rewritten-again.jpg',
+    retry_count: 3,
+    retry_3_term: 'rewritten-again',
+    source: 'unsplash-retry-3',
+    response_time: 80
+  }));
+  logRequest(createLog({
+    original_url: 'vimage_021_direct-without-timing.jpg',
+    response_time: null
+  }));
   logRequest(createLog({
     original_url: 'invalid.zip',
     query_term: null,
@@ -77,12 +94,14 @@ test('Unsplash match rates exclude cache, fallback, and failed searches', t => {
 
   const stats = getStats();
 
-  assert.equal(stats.directUnsplashCount, 15);
-  assert.equal(stats.rewrittenUnsplashCount, 1);
-  assert.equal(stats.unsplashMatchCount, 16);
-  assert.equal(stats.directUnsplashRate, 93.8);
-  assert.equal(stats.rewrittenUnsplashRate, 6.2);
+  assert.equal(stats.directUnsplashCount, 16);
+  assert.equal(stats.rewrittenUnsplashCount, 2);
+  assert.equal(stats.unsplashMatchCount, 18);
+  assert.equal(stats.directUnsplashRate, 88.9);
+  assert.equal(stats.rewrittenUnsplashRate, 11.1);
+  assert.equal(stats.directUnsplashAvgResponseTime, 20);
+  assert.equal(stats.rewrittenUnsplashAvgResponseTime, 100);
   assert.equal(stats.cacheHitCount, 1);
-  assert.equal(stats.imageRequests, 19);
+  assert.equal(stats.imageRequests, 21);
   assert.equal(stats.errorRequests, 1);
 });
