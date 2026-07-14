@@ -10,8 +10,8 @@
 - 🖼️ **图片请求高可用** - 合法格式请求使用 LLM 智能重试 + Picsum 兜底
 - 🎨 **图片质量保证** - 优先使用 Unsplash 专业摄影作品，视觉效果出众
 - ⚡ **即插即用** - 无需额外配置，AI 直接在输出中生成图片 URL
-- 🔄 **智能重试** - 找不到图片？LLM 自动生成同义词再试 3 次
-- 📊 **监控面板** - 实时查看命中率、响应时间、LLM 重试详情
+- 🔄 **智能重试** - 找不到图片时，一次生成多个候选词并在统一时间预算内重试
+- 📊 **监控面板** - 实时查看命中率、响应时间、候选词重试详情
 
 ## 快速开始
 
@@ -149,7 +149,7 @@ ADMIN_COOKIE_SECURE=true
 
 - ✅ **零配置** - AI 无需学习复杂的图片搜索 API
 - ✅ **语义理解** - AI 擅长从上下文提取关键词
-- ✅ **失败容错** - 即使描述词不准确，LLM 重试机制也能找到相关图片
+- ✅ **失败容错** - 即使描述词不准确，也会使用候选词扩大搜索范围
 - ✅ **稳定兜底** - 合法格式的图片请求在搜索失败时切换到 Picsum
 
 ### URL格式
@@ -172,23 +172,17 @@ http://your-domain.com/vimage_{序号}_{描述词}.{扩展名}
 ## 工作流程
 
 ```
-请求 → 解析URL → 检查缓存 → 查询Unsplash
-                    ↓
-              无结果？
-                    ↓
-         LLM重试1（精确同义词）
-                    ↓
-              仍无结果？
-                    ↓
-         LLM重试2（换一组同义词）
-                    ↓
-              仍无结果？
-                    ↓
-         LLM重试3（简化描述词）
-                    ↓
-              仍无结果？
-                    ↓
-         Picsum随机图片兜底
+请求 → 解析URL → L1内存缓存 → L2持久缓存 → 查询Unsplash
+                                               ↓
+                                         原词无结果？
+                                               ↓
+                                  一次LLM生成最多3个候选词
+                                               ↓
+                                  在总时间预算内依次尝试候选词
+                                               ↓
+                                         仍无结果？
+                                               ↓
+                                      Picsum随机图片兜底
 ```
 
 ## 环境变量
@@ -199,6 +193,9 @@ http://your-domain.com/vimage_{序号}_{描述词}.{扩展名}
 | `DASHSCOPE_API_KEY` | 阿里百炼 DashScope API密钥 | 必填 |
 | `DASHSCOPE_MODEL` | LLM模型ID | `deepseek-v4-flash` |
 | `DASHSCOPE_API_BASE` | 阿里百炼 OpenAI 兼容接口地址 | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
+| `LLM_TIMEOUT_MS` | 单次 LLM 候选词请求超时（毫秒） | `2500` |
+| `UNSPLASH_TIMEOUT_MS` | 单次 Unsplash 搜索超时（毫秒） | `2500` |
+| `IMAGE_SEARCH_BUDGET_MS` | 原词搜索、LLM 与候选词搜索的总预算（毫秒） | `5000` |
 | `PORT` | 服务端口 | `7749` |
 | `NODE_ENV` | 运行环境 | `development` |
 | `ADMIN_AUTH_ENABLED` | 是否启用后台登录保护 | `true` |
@@ -248,6 +245,11 @@ GET /vimage_001_cute-cat.jpg
   "cacheHitCount": 3850,
   "cacheMissCount": 4390,
   "cacheHitRate": 46.7,
+  "directUnsplashCount": 4200,
+  "rewrittenUnsplashCount": 185,
+  "unsplashMatchCount": 4385,
+  "directUnsplashRate": 95.8,
+  "rewrittenUnsplashRate": 4.2,
   "avgResponseTime": 715,
   "sourcesDistribution": {
     "unsplash": 4200,
@@ -264,15 +266,24 @@ GET /vimage_001_cute-cat.jpg
   },
   "cacheStats": {
     "activeEntries": 17,
-    "processHits": 2037,
+    "persistentEntries": 4385,
+    "memoryHits": 2037,
+    "persistentHits": 412,
+    "processHits": 2449,
     "processMisses": 2322,
-    "processHitRate": 46.7,
+    "processHitRate": 51.3,
     "ttlSeconds": 43200
   }
 }
 ```
 
-`successRate` 表示由 Unsplash 或缓存完成匹配的有效图片请求占比，Picsum 兜底不算匹配成功。`cacheHitRate` 和 `avgResponseTime` 同样只统计格式正确的图片请求。`cacheStats.activeEntries` 表示当前进程中尚未过期的缓存条目；`processHits`、`processMisses` 和 `processHitRate` 从本次进程启动后开始计数，服务重启后归零。
+`successRate` 表示由 Unsplash 或缓存完成匹配的有效图片请求占比，Picsum 兜底不算匹配成功。`cacheHitRate` 和 `avgResponseTime` 同样只统计格式正确的图片请求。
+
+`avgResponseTime` 从图片路由开始处理计时，到重定向目标确定并完成应用缓存读写为止；不包含请求日志写入、302 响应在网络中的传输，以及浏览器随后下载最终图片的时间。
+
+`directUnsplashCount` 表示原查询词直接匹配 Unsplash 的次数，`rewrittenUnsplashCount` 表示换词后匹配的次数。换词通常由单次 LLM 请求生成，LLM 不可用时会使用本地简化词兜底。两者之和是 `unsplashMatchCount`；`directUnsplashRate` 和 `rewrittenUnsplashRate` 仅以成功的 Unsplash 匹配为分母，不包含缓存命中、Picsum 兜底或失败请求。
+
+缓存使用两级结构：`activeEntries` 是当前内存 L1 中尚未过期的条目，`persistentEntries` 是 SQLite L2 中尚未过期且可跨服务重启复用的条目。`memoryHits` 和 `persistentHits` 分别统计本次运行中命中 L1、L2 的次数；`processHits` 是二者之和，`processMisses` 表示两层均未命中，`processHitRate` 按 `processHits / (processHits + processMisses)` 计算。运行期命中计数在服务重启后归零，数据库历史中的 `cacheHitCount` 不受影响。
 
 ### GET /api/logs?page=1&limit=20&type=image
 
@@ -316,7 +327,7 @@ Web监控面板，可视化展示有效图片请求指标、当前缓存状态�
 - **运行时**：Node.js 20.x LTS
 - **Web框架**：Express.js 4.x
 - **HTTP客户端**：axios
-- **缓存**：node-cache（内存缓存）
+- **缓存**：node-cache（L1 内存缓存）+ SQLite（L2 持久化缓存）
 - **数据库**：better-sqlite3（SQLite）
 - **容器化**：Docker + Docker Compose
 
@@ -334,6 +345,7 @@ vimage/
 │   ├── services/
 │   │   ├── unsplash.js       # Unsplash API
 │   │   ├── llm.js            # LLM服务
+│   │   ├── imageSearch.js    # 搜索预算与候选词编排
 │   │   ├── cache.js          # 缓存服务
 │   │   └── rateLimit.js      # 速率限制
 │   ├── db/
@@ -354,10 +366,10 @@ vimage/
 
 ## 性能指标
 
-- **缓存命中**：< 10ms
-- **Unsplash直接成功**：200-500ms
-- **LLM重试1次**：800-1200ms
-- **LLM重试3次+兜底**：2000-3000ms
+- **L1 内存缓存命中**：通常 < 10ms
+- **L2 SQLite 缓存命中**：通常 < 20ms
+- **Unsplash 直接成功**：受上游网络影响，历史平均约 700ms
+- **换词搜索与兜底**：受 `IMAGE_SEARCH_BUDGET_MS` 限制，默认不超过约 5 秒
 
 ## 许可证
 

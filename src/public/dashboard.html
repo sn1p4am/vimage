@@ -306,10 +306,106 @@
       background: var(--success);
     }
 
+    .match-summary {
+      min-height: 112px;
+      display: grid;
+      grid-template-columns: minmax(250px, 0.8fr) minmax(0, 1.8fr);
+      align-items: center;
+      gap: 28px;
+      margin-top: 16px;
+      padding: 17px 20px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.72);
+      animation: reveal 380ms ease 150ms both;
+    }
+
+    .match-summary h2 {
+      margin: 0;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 17px;
+      line-height: 1.3;
+      letter-spacing: 0;
+    }
+
+    .match-summary-copy p {
+      margin: 5px 0 0;
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+
+    .match-results {
+      min-width: 0;
+    }
+
+    .match-items {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 24px;
+    }
+
+    .match-item {
+      min-width: 0;
+    }
+
+    .match-item-label {
+      display: block;
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .match-item-value {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      margin-top: 2px;
+    }
+
+    .match-item-value strong {
+      color: var(--text);
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 24px;
+      line-height: 1.25;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .match-item-value span {
+      min-width: 0;
+      overflow: hidden;
+      color: var(--text-muted);
+      font-size: 12px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .match-composition {
+      height: 5px;
+      display: flex;
+      margin-top: 10px;
+      overflow: hidden;
+      border-radius: 3px;
+      background: #e9eeeb;
+    }
+
+    .match-composition span {
+      width: 0;
+      height: 100%;
+      transition: width 400ms ease;
+    }
+
+    .match-composition-direct {
+      background: var(--success);
+    }
+
+    .match-composition-rewritten {
+      background: var(--warning);
+    }
+
     .runtime-strip {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      margin: 16px 0 38px;
+      margin: 10px 0 38px;
       border: 1px solid var(--border);
       border-radius: var(--radius);
       background: rgba(255, 255, 255, 0.72);
@@ -741,6 +837,11 @@
     }
 
     @media (max-width: 900px) {
+      .match-summary {
+        grid-template-columns: 1fr;
+        gap: 14px;
+      }
+
       .table-scroll {
         display: none;
       }
@@ -862,6 +963,10 @@
         border-left: 0;
       }
 
+      .match-summary {
+        padding: 16px;
+      }
+
       .logs-toolbar {
         align-items: stretch;
         flex-direction: column;
@@ -897,6 +1002,11 @@
 
       .metric-value {
         font-size: 31px;
+      }
+
+      .match-items {
+        grid-template-columns: 1fr;
+        gap: 12px;
       }
 
       .pagination {
@@ -976,7 +1086,7 @@
 
         <article class="metric-card">
           <div class="metric-label">
-            <span title="数据库历史中，由内存缓存直接返回的有效图片请求占比">累计缓存命中率</span>
+            <span title="数据库历史中，由应用缓存直接返回的有效图片请求占比">累计缓存命中率</span>
             <span class="metric-accent" aria-hidden="true"></span>
           </div>
           <div class="metric-value" id="cacheHitRate">-</div>
@@ -996,6 +1106,35 @@
         </article>
       </div>
 
+      <section class="match-summary" aria-labelledby="matchSummaryTitle">
+        <div class="match-summary-copy">
+          <h2 id="matchSummaryTitle">Unsplash 匹配构成</h2>
+          <p id="unsplashMatchTotal">只统计成功返回 Unsplash 图片的请求，缓存不参与占比</p>
+        </div>
+        <div class="match-results">
+          <div class="match-items">
+            <div class="match-item">
+              <span class="match-item-label">原词直接命中</span>
+              <div class="match-item-value">
+                <strong id="directUnsplashRate">-</strong>
+                <span id="directUnsplashCount">- 次</span>
+              </div>
+            </div>
+            <div class="match-item">
+              <span class="match-item-label">换词后命中</span>
+              <div class="match-item-value">
+                <strong id="rewrittenUnsplashRate">-</strong>
+                <span id="rewrittenUnsplashCount">- 次</span>
+              </div>
+            </div>
+          </div>
+          <div class="match-composition" aria-hidden="true">
+            <span class="match-composition-direct" id="directUnsplashProgress"></span>
+            <span class="match-composition-rewritten" id="rewrittenUnsplashProgress"></span>
+          </div>
+        </div>
+      </section>
+
       <div class="runtime-strip" aria-label="当前进程状态">
         <div class="runtime-item">
           <span class="runtime-label">Unsplash 本小时用量</span>
@@ -1003,9 +1142,9 @@
           <span class="runtime-detail" id="rateLimitReset">等待数据</span>
         </div>
         <div class="runtime-item">
-          <span class="runtime-label">当前内存缓存</span>
+          <span class="runtime-label">当前缓存条目</span>
           <strong class="runtime-value" id="cacheEntries">-</strong>
-          <span class="runtime-detail" id="cacheTtl">尚未过期的图片查询条目</span>
+          <span class="runtime-detail" id="cacheTtl">内存与持久化的有效图片查询</span>
         </div>
         <div class="runtime-item">
           <span class="runtime-label">本次运行缓存命中率</span>
@@ -1076,6 +1215,13 @@
       cacheRatio: document.getElementById('cacheRatio'),
       cacheProgress: document.getElementById('cacheProgress'),
       avgResponseTime: document.getElementById('avgResponseTime'),
+      unsplashMatchTotal: document.getElementById('unsplashMatchTotal'),
+      directUnsplashRate: document.getElementById('directUnsplashRate'),
+      directUnsplashCount: document.getElementById('directUnsplashCount'),
+      directUnsplashProgress: document.getElementById('directUnsplashProgress'),
+      rewrittenUnsplashRate: document.getElementById('rewrittenUnsplashRate'),
+      rewrittenUnsplashCount: document.getElementById('rewrittenUnsplashCount'),
+      rewrittenUnsplashProgress: document.getElementById('rewrittenUnsplashProgress'),
       rateLimit: document.getElementById('rateLimit'),
       rateLimitReset: document.getElementById('rateLimitReset'),
       cacheEntries: document.getElementById('cacheEntries'),
@@ -1137,9 +1283,14 @@
       return value !== null && value !== undefined ? formatNumber(value) + ' ms' : '-';
     }
 
-    function formatTtl(seconds) {
+    function formatTtl(seconds, persistentEnabled) {
       const hours = Math.round(Number(seconds || 0) / 3600);
-      return hours > 0 ? '条目最长保留 ' + hours + ' 小时' : '内存缓存，重启后清空';
+      if (hours > 0) {
+        return persistentEnabled
+          ? '最长保留 ' + hours + ' 小时 · 持久化条目跨重启保留'
+          : '条目最长保留 ' + hours + ' 小时';
+      }
+      return persistentEnabled ? '持久化条目跨重启保留' : '内存缓存，重启后清空';
     }
 
     function clampPercentage(value) {
@@ -1242,9 +1393,30 @@
       const cacheMissCount = Number(data.cacheMissCount || 0);
       const successRate = clampPercentage(data.successRate);
       const cacheHitRate = clampPercentage(data.cacheHitRate);
+      const directUnsplashCount = Number(data.directUnsplashCount || 0);
+      const rewrittenUnsplashCount = Number(data.rewrittenUnsplashCount || 0);
+      const unsplashMatchCount = Number(data.unsplashMatchCount ?? (directUnsplashCount + rewrittenUnsplashCount));
+      const directUnsplashProgress = unsplashMatchCount > 0
+        ? directUnsplashCount / unsplashMatchCount * 100
+        : 0;
+      const rewrittenUnsplashProgress = unsplashMatchCount > 0
+        ? rewrittenUnsplashCount / unsplashMatchCount * 100
+        : 0;
+      const directUnsplashRate = clampPercentage(directUnsplashProgress);
+      const rewrittenUnsplashRate = unsplashMatchCount > 0
+        ? Number((100 - directUnsplashRate).toFixed(1))
+        : 0;
       const rateLimit = data.rateLimitStatus || {};
       const cache = data.cacheStats || {};
-      const processLookups = Number(cache.processHits || 0) + Number(cache.processMisses || 0);
+      const hasTieredCache = cache.persistentEntries !== undefined
+        || cache.memoryHits !== undefined
+        || cache.persistentHits !== undefined;
+      const memoryHits = Number(cache.memoryHits ?? cache.processHits ?? 0);
+      const persistentHits = Number(cache.persistentHits || 0);
+      const processMisses = Number(cache.processMisses || 0);
+      const processHits = memoryHits + persistentHits;
+      const processLookups = processHits + processMisses;
+      const processHitRate = processLookups > 0 ? processHits / processLookups * 100 : 0;
 
       elements.imageRequests.textContent = formatNumber(imageRequests);
       elements.excludedErrors.textContent = '另有 ' + formatNumber(errorRequests) + ' 条格式错误请求已单列';
@@ -1256,18 +1428,33 @@
       elements.cacheProgress.style.width = cacheHitRate + '%';
       elements.avgResponseTime.textContent = formatNumber(data.avgResponseTime || 0) + ' ms';
 
+      elements.unsplashMatchTotal.textContent = unsplashMatchCount > 0
+        ? '共 ' + formatNumber(unsplashMatchCount) + ' 次成功匹配 · 缓存不参与占比'
+        : '暂无成功的 Unsplash 匹配，缓存不参与占比';
+      elements.directUnsplashRate.textContent = formatPercent(directUnsplashRate);
+      elements.directUnsplashCount.textContent = formatNumber(directUnsplashCount) + ' 次';
+      elements.directUnsplashProgress.style.width = directUnsplashProgress + '%';
+      elements.rewrittenUnsplashRate.textContent = formatPercent(rewrittenUnsplashRate);
+      elements.rewrittenUnsplashCount.textContent = formatNumber(rewrittenUnsplashCount) + ' 次';
+      elements.rewrittenUnsplashProgress.style.width = rewrittenUnsplashProgress + '%';
+
       const current = Number(rateLimit.current || 0);
       const limit = Number(rateLimit.limit || 0);
       const resetMinutes = Math.max(0, Math.ceil(Number(rateLimit.resetIn || 0) / 60));
       elements.rateLimit.textContent = formatNumber(current) + ' / ' + formatNumber(limit);
       elements.rateLimitReset.textContent = resetMinutes + ' 分钟后重置本小时计数';
 
-      const entries = Number(cache.activeEntries ?? cache.keys ?? 0);
-      elements.cacheEntries.textContent = formatNumber(entries) + ' 条有效条目';
-      elements.cacheTtl.textContent = formatTtl(cache.ttlSeconds);
-      elements.processCacheRate.textContent = processLookups > 0 ? formatPercent(cache.processHitRate) : '暂无查询';
+      const memoryEntries = Number(cache.activeEntries ?? cache.keys ?? 0);
+      const persistentEntries = Number(cache.persistentEntries || 0);
+      elements.cacheEntries.textContent = hasTieredCache
+        ? '内存 ' + formatNumber(memoryEntries) + ' · 持久化 ' + formatNumber(persistentEntries)
+        : formatNumber(memoryEntries) + ' 条内存有效条目';
+      elements.cacheTtl.textContent = formatTtl(cache.ttlSeconds, hasTieredCache);
+      elements.processCacheRate.textContent = processLookups > 0 ? formatPercent(processHitRate) : '暂无查询';
       elements.processCacheRatio.textContent = processLookups > 0
-        ? formatNumber(cache.processHits) + ' 次命中 · ' + formatNumber(cache.processMisses) + ' 次未命中'
+        ? (hasTieredCache
+          ? '内存 ' + formatNumber(memoryHits) + ' · 持久化 ' + formatNumber(persistentHits) + ' · 未命中 ' + formatNumber(processMisses)
+          : formatNumber(processHits) + ' 次命中 · ' + formatNumber(processMisses) + ' 次未命中')
         : '进程重启后重新计数';
 
       elements.imageLogCount.textContent = formatCompactNumber(imageRequests);

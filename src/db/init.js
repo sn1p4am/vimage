@@ -52,6 +52,15 @@ function initDatabase() {
     )
   `;
 
+  const createImageCacheTableSQL = `
+    CREATE TABLE IF NOT EXISTS image_cache (
+      cache_key TEXT PRIMARY KEY,
+      url TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL
+    )
+  `;
+
   const createIndexSQL = `
     CREATE INDEX IF NOT EXISTS idx_timestamp
     ON request_logs(timestamp DESC)
@@ -62,9 +71,16 @@ function initDatabase() {
     ON request_logs(timestamp DESC, id DESC)
   `;
 
+  const createImageCacheExpiryIndexSQL = `
+    CREATE INDEX IF NOT EXISTS idx_image_cache_expires_at
+    ON image_cache(expires_at)
+  `;
+
   db.exec(createTableSQL);
+  db.exec(createImageCacheTableSQL);
   db.exec(createIndexSQL);
   db.exec(createPaginationIndexSQL);
+  db.exec(createImageCacheExpiryIndexSQL);
 
   console.log('Database initialized successfully');
 }

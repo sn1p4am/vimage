@@ -7,6 +7,7 @@ const axios = require('axios');
 
 const UNSPLASH_API_BASE = 'https://api.unsplash.com';
 const ACCESS_KEY = process.env.UNSPLASH_ACCESS_KEY;
+const DEFAULT_UNSPLASH_TIMEOUT_MS = 2500;
 
 if (!ACCESS_KEY) {
   console.warn('Warning: UNSPLASH_ACCESS_KEY not set in environment variables');
@@ -15,9 +16,18 @@ if (!ACCESS_KEY) {
 /**
  * 搜索Unsplash图片
  * @param {string} query - 查询词（空格分隔）
+ * @param {{timeoutMs?: number, signal?: AbortSignal}} options - 请求选项
  * @returns {Promise<{total: number, url: string|null}>} 搜索结果
  */
-async function searchPhotos(query) {
+async function searchPhotos(query, options = {}) {
+  const configuredTimeout = parseInt(process.env.UNSPLASH_TIMEOUT_MS, 10);
+  const requestedTimeout = parseInt(options.timeoutMs, 10);
+  const timeout = Number.isFinite(requestedTimeout) && requestedTimeout > 0
+    ? requestedTimeout
+    : (Number.isFinite(configuredTimeout) && configuredTimeout > 0
+        ? configuredTimeout
+        : DEFAULT_UNSPLASH_TIMEOUT_MS);
+
   try {
     const response = await axios.get(`${UNSPLASH_API_BASE}/search/photos`, {
       params: {
@@ -25,7 +35,8 @@ async function searchPhotos(query) {
         per_page: 1,  // 只返回1张图片
         client_id: ACCESS_KEY
       },
-      timeout: 5000  // 5秒超时
+      timeout,
+      signal: options.signal
     });
 
     const total = response.data.total || 0;
@@ -39,7 +50,7 @@ async function searchPhotos(query) {
     console.error('Unsplash API error:', error.message);
 
     // 区分不同类型的错误
-    if (error.code === 'ECONNABORTED') {
+    if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT' || error.code === 'ERR_CANCELED') {
       throw new Error('Unsplash API timeout');
     } else if (error.response) {
       // HTTP错误响应

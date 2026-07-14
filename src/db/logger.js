@@ -138,6 +138,8 @@ function getStats() {
       SUM(CASE WHEN query_term IS NULL THEN 1 ELSE 0 END) AS error_requests,
       SUM(CASE WHEN query_term IS NOT NULL AND success = 1 THEN 1 ELSE 0 END) AS success_count,
       SUM(CASE WHEN query_term IS NOT NULL AND from_cache = 1 THEN 1 ELSE 0 END) AS cache_hit_count,
+      SUM(CASE WHEN query_term IS NOT NULL AND success = 1 AND source = 'unsplash' THEN 1 ELSE 0 END) AS direct_unsplash_count,
+      SUM(CASE WHEN query_term IS NOT NULL AND success = 1 AND source LIKE 'unsplash-retry-%' THEN 1 ELSE 0 END) AS rewritten_unsplash_count,
       AVG(CASE WHEN query_term IS NOT NULL THEN response_time END) AS avg_response_time
     FROM request_logs
   `);
@@ -147,8 +149,15 @@ function getStats() {
   const successCount = aggregate.success_count || 0;
   const cacheHitCount = aggregate.cache_hit_count || 0;
   const cacheMissCount = Math.max(0, imageRequests - cacheHitCount);
+  const directUnsplashCount = aggregate.direct_unsplash_count || 0;
+  const rewrittenUnsplashCount = aggregate.rewritten_unsplash_count || 0;
+  const unsplashMatchCount = directUnsplashCount + rewrittenUnsplashCount;
   const successRate = toPercentage(successCount, imageRequests);
   const cacheHitRate = toPercentage(cacheHitCount, imageRequests);
+  const directUnsplashRate = toPercentage(directUnsplashCount, unsplashMatchCount);
+  const rewrittenUnsplashRate = unsplashMatchCount > 0
+    ? Number((100 - directUnsplashRate).toFixed(1))
+    : 0;
   const avgResponseTime = Math.round(aggregate.avg_response_time || 0);
 
   // 来源分布
@@ -175,6 +184,11 @@ function getStats() {
     cacheHitCount,
     cacheMissCount,
     cacheHitRate,
+    directUnsplashCount,
+    rewrittenUnsplashCount,
+    unsplashMatchCount,
+    directUnsplashRate,
+    rewrittenUnsplashRate,
     avgResponseTime,
     sourcesDistribution
   };
