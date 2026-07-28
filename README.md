@@ -375,7 +375,7 @@ vimage/
 
 ## 许可证
 
-MIT
+Apache License 2.0，详见 [LICENSE](LICENSE)。
 
 ## 作者
 
