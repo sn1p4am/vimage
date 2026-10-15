@@ -4,7 +4,6 @@ const { loadImageConfig } = require('../config/imageAccess');
 const { createAssetStore, validateUpstreamUrl } = require('../services/imageAssets');
 const { fetchImage } = require('../services/imageProxy');
 const { asyncHandler } = require('../utils/asyncHandler');
-const { logRequest } = require('../db/logger');
 
 function createImageRouter(options = {}) {
   const config = options.config || loadImageConfig();
@@ -53,15 +52,6 @@ function createImageRouter(options = {}) {
       activeRequests -= 1;
     }
   }));
-  router.get('/:filename', (req, res) => {
-    if (!/^vimage_/i.test(req.params.filename)) {
-      logRequest({ original_url: req.params.filename, error_message: 'Not Found', response_time: 0 });
-      return res.status(404).json({ error: 'Not Found' });
-    }
-    return res.set('Cache-Control', 'no-store').status(410).json({
-      error: 'Dynamic image URLs are disabled. Use the authenticated POST /api/images/resolve endpoint.'
-    });
-  });
   return router;
 }
 

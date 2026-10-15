@@ -6,20 +6,44 @@ Agent 通过可信后端调用找图 API，Vimage 使用 Unsplash 与 LLM 候选
 
 ## 快速开始
 
-需要 Docker Compose，或 Node.js 24 LTS。
+### Docker 部署（推荐）
+
+需要 Docker 和 Docker Compose，主机无需安装 Node.js。以下为 Linux / WSL 的 Bash 命令；容器使用 UID/GID `1000:1000`，先准备可写的数据目录。
 
 ```bash
+git clone https://github.com/sn1p4am/vimage.git
+cd vimage
 cp .env.example .env
-node scripts/generate-api-key.js
+sudo install -d -m 0750 -o 1000 -g 1000 data
+mkdir -p .secrets
+chmod 700 .secrets
+docker compose build
+docker compose run --rm --no-deps --user "$(id -u):$(id -g)" \
+  -v "$PWD/.secrets:/app/.secrets" \
+  vimage node scripts/generate-api-key.js
 ```
 
 填写 `.env` 中的 Unsplash / DashScope 凭据、后台密码，以及命令打印的 `IMAGE_API_KEY_HASHES`。原始客户端 Key 保存在 `.secrets/image-api-key`，不要放入 Skill、代码仓库、生成页面或 Agent 沙箱。
 
 ```bash
-docker compose up -d --build
+docker compose up -d
 ```
 
-本地直接运行可使用 `npm ci && npm start`；将 `DB_PATH` 改为 `./data/vimage.db`。本机 Docker Compose override 将端口绑定为 `127.0.0.1:7749`。
+Compose 默认将端口绑定为 `127.0.0.1:7749`，公网访问通过反向代理接入。
+
+### Node.js 本机运行
+
+需要 Node.js 24 LTS。在项目目录执行：
+
+```bash
+cp .env.example .env
+npm ci
+node scripts/generate-api-key.js
+```
+
+填写 `.env` 中的 API 凭据、后台密码和 `IMAGE_API_KEY_HASHES`，将 `DB_PATH` 设为 `./data/vimage.db`，然后执行 `npm start`。
+
+### 服务入口
 
 - 后台：`http://localhost:7749/dashboard`，使用后台账号密码。
 - 找图：`POST /api/images/resolve`，使用独立的 Bearer API Key。
@@ -48,12 +72,12 @@ UNSPLASH_PROXY_APPROVED=false
 
 先由产品可信后端注册 `search_image` 工具，再将以下规则加入系统提示词或项目提示词；也可以直接加载配套 [Skill](skills/vimage-images/SKILL.md)，其中已完整包含配图展示规则。仅粘贴提示词不会自动接入工具。
 
-保留原版的英文描述词、Markdown/HTML 输出、懒加载、Editorial Neutral 动态渐变占位和布局规则。旧版的三位序号、连字符文件名与手拼动态 URL 已改为工具返回的固定链接；宽度通过工具参数指定，不能再向图片链接追加参数。
+以下规则涵盖英文搜索词组、固定图片链接、Markdown/HTML 输出、懒加载、Editorial Neutral 动态渐变占位和布局保留。图片宽度通过工具参数指定，展示时直接使用返回的链接。
 
 ```text
 图片使用规则：
 - 所有配图使用 Vimage 图片 URL；通过运行时提供的 search_image 工具查找图片，不自行拼接图片地址。
-- query 描述词必须是英文，符合图片上下文语义，用具体主体、场景和风格表达需要的照片，例如 brutalist concrete museum；不再要求连字符或三位序号。
+- 请求前先将中文或其他非英文需求转换为符合上下文语义的英文搜索词组，再传入 query；单词之间用空格，不用连字符。例如“好看的小女孩”使用 beautiful girl，不直接发送中文，也不写成 beautiful-girl。
 - 按布局需要传入 width（80–2400 的整数，默认 900），例如 search_image({"query":"brutalist concrete museum","width":900})。可信后端将 width 映射到 w，质量固定为 q=80；不额外传入 q、URL 或认证参数。
 - 只使用工具成功返回的完整固定图片 url，原样用于成品，不修改域名、图片 ID 或追加查询参数。本地与线上地址由后端配置切换，不在提示词中写死域名。
 - API Key 由可信后端注入，不索取、读取或输出 Key，不用 shell、curl、浏览器或通用 HTTP 工具绕过 search_image。
@@ -77,9 +101,9 @@ UNSPLASH_PROXY_APPROVED=false
 - 不要限制页面图片数量，不要删除图片，不要改变图片所在位置，不要为了图片加载规则调整布局。服务端配额仅限制调用，不作为删图或缩减页面图片数量的理由。
 ```
 
-## 升级注意
+## 固定图片链接
 
-旧 `/vimage_...` 动态图片入口已返回 **410 Gone**，避免被绕过鉴权滥用。旧页面需通过新 API 选图并替换链接。找图失败返回 502/503，不再跳转到随机 Picsum；历史日志和图片缩略图仍保留。
+通过 `POST /api/images/resolve` 获取固定图片链接后，可直接用于 Markdown 或 HTML。浏览器访问图片不会调用找图接口或模型。找图失败返回 502/503，不创建图片映射。
 
 `image_assets` 固定映射独立于搜索缓存，不因缓存 TTL、日志清理或重启失效；上游删图时仍可能无法展示。修改图片 ID 返回 404，不进行搜索。数据库应定期备份。固定图片展示不计入后台的搜索统计。
 
@@ -139,11 +163,13 @@ UNSPLASH_PROXY_APPROVED=false
 
 后台登录按来源 IP 限制失败尝试：15 分钟最多 10 次，成功登录不占用失败额度。后台页面、统计及日志接口禁止浏览器缓存。默认只信任直连地址，不根据未经配置的 `X-Forwarded-For` 判定来源 IP。
 
-Docker 镜像以 UID/GID `1000:1000` 的非 root 用户运行，根文件系统只读，SQLite 数据目录保持可写。升级已有部署时先备份数据库，并确保宿主机 `data/` 目录归该 UID/GID 所有。容器标准输出日志轮转为最多 3 个 10 MB 文件；数据库中过期请求日志每分钟最多清理 1000 条，图片缓存不受请求日志清理影响。
+Docker 镜像以 UID/GID `1000:1000` 的非 root 用户运行，根文件系统只读，SQLite 数据目录保持可写。确保宿主机 `data/` 目录归该 UID/GID 所有，并定期备份数据库。容器标准输出日志轮转为最多 3 个 10 MB 文件；数据库中过期请求日志每分钟最多清理 1000 条，图片缓存不受请求日志清理影响。
 
 ### POST /api/images/resolve
 
 请求头：`Authorization: Bearer <原始客户端Key>`；请求体：`{"query":"cute cat","w":900,"q":80}`。
+
+调用方先将配图需求转换为英文搜索词组，`query` 中单词用空格分隔，不用连字符。例如“好看的小女孩”传 `"beautiful girl"`，而不是中文原文或 `"beautiful-girl"`。
 
 返回 `{id, url, upstream_url, delivery_mode, cached}`。成功与错误响应均禁止缓存。未配置 Key 返回 503，无效 Key 返回 401，参数错误返回 400，超出每 Key 配额返回 429，并发繁忙或上游限流返回 503。后台登录不能代替 API Key，API Key 也不能访问管理后台。
 
@@ -157,15 +183,12 @@ Docker 镜像以 UID/GID `1000:1000` 的非 root 用户运行，根文件系统�
 
 ### GET /api/stats
 
-获取服务统计信息，需要先登录后台。统计首次读取时从 SQLite 恢复，之后按请求日志增量更新；其他数据库连接写入或日志清理后会重新加载。统计范围为当前保留的请求日志。
+获取服务统计信息，需要先登录后台。统计首次读取时从 SQLite 恢复，之后按请求日志增量更新；其他数据库连接写入或日志清理后会重新加载。统计范围为当前保留的找图请求日志；只有通过鉴权、参数、并发及配额检查并进入找图流程的请求才会记录。固定图片访问与被拒绝的请求不计入找图统计。
 
 **响应示例：**
 ```json
 {
-  "totalRequests": 9472,
-  "totalLoggedRequests": 9472,
   "imageRequests": 8240,
-  "errorRequests": 1232,
   "successCount": 8235,
   "successRate": 99.9,
   "cacheHitCount": 3850,
@@ -177,15 +200,15 @@ Docker 镜像以 UID/GID `1000:1000` 的非 root 用户运行，根文件系统�
   "directUnsplashRate": 95.8,
   "rewrittenUnsplashRate": 4.2,
   "directUnsplashAvgResponseTime": 707,
-  "rewrittenUnsplashAvgResponseTime": 9733,
-  "avgResponseTime": 715,
+  "rewrittenUnsplashAvgResponseTime": 1700,
+  "avgResponseTime": 402,
   "sourcesDistribution": {
     "unsplash": 4200,
     "cache": 3850,
     "unsplash-retry-1": 150,
     "unsplash-retry-2": 30,
     "unsplash-retry-3": 5,
-    "picsum-all-failed": 5
+    "search-failed": 5
   },
   "rateLimitStatus": {
     "current": 1523,
@@ -201,37 +224,37 @@ Docker 镜像以 UID/GID `1000:1000` 的非 root 用户运行，根文件系统�
     "processMisses": 2322,
     "processHitRate": 51.3,
     "ttlSeconds": 43200
-  }
+  },
+  "retentionDays": 30
 }
 ```
 
-`successRate` 表示由 Unsplash 或缓存完成匹配的有效图片请求占比，Picsum 兜底不算匹配成功。`cacheHitRate` 和 `avgResponseTime` 同样只统计格式正确的图片请求。
+`imageRequests` 是进入找图流程的请求总数；`successRate` 表示其中由 Unsplash 或缓存完成匹配的比例，未匹配与上游调用失败均计为失败。`cacheHitRate` 和 `avgResponseTime` 使用同一统计范围。
 
-`avgResponseTime` 从鉴权与配额校验后的找图处理开始计时，到固定映射保存为止；不包含请求日志写入、响应网络传输和后续图片展示。历史动态入口日志保留原来的计时口径。
+`avgResponseTime` 从鉴权与配额校验后的找图处理开始计时，到固定映射保存或搜索失败为止；不包含请求日志写入、响应网络传输和后续图片展示。
 
-`directUnsplashCount` 表示原查询词直接匹配 Unsplash 的次数，`rewrittenUnsplashCount` 表示换词后匹配的次数。换词通常由单次 LLM 请求生成，LLM 不可用时会使用本地简化词兜底。两者之和是 `unsplashMatchCount`；`directUnsplashRate` 和 `rewrittenUnsplashRate` 仅以成功的 Unsplash 匹配为分母，不包含缓存命中、Picsum 兜底或失败请求。`directUnsplashAvgResponseTime` 与 `rewrittenUnsplashAvgResponseTime` 分别给出这两类成功请求的平均处理时间，没有样本时返回 `null`。
+`directUnsplashCount` 表示原查询词直接匹配 Unsplash 的次数，`rewrittenUnsplashCount` 表示换词后匹配的次数。换词通常由单次 LLM 请求生成，LLM 不可用时会使用本地简化词。两者之和是 `unsplashMatchCount`；`directUnsplashRate` 和 `rewrittenUnsplashRate` 仅以成功的 Unsplash 匹配为分母，不包含缓存命中或失败请求。`directUnsplashAvgResponseTime` 与 `rewrittenUnsplashAvgResponseTime` 分别给出这两类成功请求的平均处理时间，没有样本时返回 `null`。
 
-缓存使用两级结构：`activeEntries` 是当前内存 L1 中尚未过期的条目，`persistentEntries` 是 SQLite L2 中尚未过期且可跨服务重启复用的条目。`memoryHits` 和 `persistentHits` 分别统计本次运行中命中 L1、L2 的次数；`processHits` 是二者之和，`processMisses` 表示两层均未命中，`processHitRate` 按 `processHits / (processHits + processMisses)` 计算。运行期命中计数在服务重启后归零，数据库历史中的 `cacheHitCount` 不受影响。
+缓存使用两级结构：`activeEntries` 是当前内存 L1 中尚未过期的条目，`persistentEntries` 是 SQLite L2 中尚未过期且可跨服务重启复用的条目。`memoryHits` 和 `persistentHits` 分别统计本次运行中命中 L1、L2 的次数；`processHits` 是二者之和，`processMisses` 表示两层均未命中，`processHitRate` 按 `processHits / (processHits + processMisses)` 计算。运行期命中计数在服务重启后归零，保留日志中的 `cacheHitCount` 不受影响。
 
 ### GET /healthz
 
-无需登录的轻量健康检查，只检查应用和数据库连接，正常时返回 `200 {"status":"ok"}`。容器健康检查使用此接口，不扫描历史日志，也不调用外部 API。
+无需登录的轻量健康检查，只检查应用和数据库连接，正常时返回 `200 {"status":"ok"}`。容器健康检查使用此接口，不扫描请求日志，也不调用外部 API。
 
-### GET /api/logs?page=1&limit=20&type=image
+### GET /api/logs?page=1&limit=20
 
-获取请求日志（分页），需要先登录后台。
+获取找图请求日志（分页），需要先登录后台。支持以下参数，未知参数返回 400。
 
 **参数：**
 - `page`：页码（从1开始）
 - `limit`：每页数量，最大100
-- `type`：日志类型，可选 `all`、`image` 或 `error`；默认 `all`
 - `q`：搜索路径、查询词、重试词或错误信息，最多 200 字符；按普通文本匹配，不将 `%`、`_` 作为通配符
 - `range`：`all`（默认）、`1h`、`24h`、`7d` 或 `30d`，相对于服务器当前时间
-- `status`：`all`（默认）、`success` 或 `fallback`；后者表示有效图片请求中的未匹配 / 兜底
-- `source`：`all`（默认）、`cache`、`direct`、`rewritten` 或 `picsum`
+- `status`：`all`（默认）、`success` 或 `failed`；`failed` 包含未匹配与上游调用失败
+- `source`：`all`（默认）、`cache`、`direct` 或 `rewritten`
 - `sort`：`newest`（默认）、`oldest` 或 `slowest`
 
-筛选条件可组合，`total` 和分页均反映全部匹配记录，而非仅筛选当前页。查询示例：`/api/logs?type=image&q=cat&range=24h&status=fallback&sort=slowest`。
+筛选条件可组合，`total` 和分页均反映全部匹配记录，而非仅筛选当前页。查询示例：`/api/logs?q=cat&range=24h&status=failed&sort=slowest`。
 
 **响应示例：**
 ```json
@@ -239,14 +262,13 @@ Docker 镜像以 UID/GID `1000:1000` 的非 root 用户运行，根文件系统�
   "total": 1234,
   "page": 1,
   "limit": 20,
-  "type": "image",
   "totalPages": 62,
   "data": [
     {
       "id": 1,
-      "timestamp": "2025-12-25T10:30:45Z",
-      "original_url": "vimage_001_cute-cat.jpg",
-      "query_term": "cute-cat",
+      "timestamp": "2026-10-15T10:30:45Z",
+      "original_url": "/api/images/resolve",
+      "query_term": "cute cat",
       "retry_count": 0,
       "success": true,
       "final_url": "https://images.unsplash.com/...",
@@ -287,8 +309,13 @@ vimage/
 │   │   ├── resolve.js        # API Key 鉴权找图
 │   │   └── api.js            # API路由
 │   ├── middleware/
+│   │   ├── imageApiAuth.js   # 找图 API Key 鉴权
 │   │   └── adminAuth.js      # 后台登录鉴权
 │   ├── services/
+│   │   ├── imageAssets.js    # 固定图片映射
+│   │   ├── imageProxy.js     # 图片代理交付
+│   │   ├── imageApiQuota.js  # 客户端配额
+│   │   ├── searchCoordinator.js # 搜索合并
 │   │   ├── unsplash.js       # Unsplash API
 │   │   ├── llm.js            # LLM服务
 │   │   ├── imageSearch.js    # 搜索预算与候选词编排
@@ -298,24 +325,26 @@ vimage/
 │   │   ├── init.js           # 数据库初始化
 │   │   └── logger.js         # 日志记录
 │   ├── utils/
-│   │   └── urlParser.js      # URL解析
+│   │   └── asyncHandler.js   # 异步路由错误处理
 │   └── public/
 │       ├── dashboard.html    # 监控面板
 │       └── login.html        # 后台登录页
 ├── data/                     # 数据库文件（Docker挂载）
 ├── docs/                     # 文档
+├── skills/vimage-images/     # Agent 配图指令与工具契约
+├── scripts/                  # API Key 生成工具
+├── test/                     # 回归测试
 ├── .env.example              # 环境变量模板
 ├── Dockerfile                # Docker镜像配置
 ├── docker-compose.yml        # Docker Compose配置
 └── package.json              # 项目依赖
 ```
 
-## 性能指标
+## 请求预算与缓存
 
-- **L1 内存缓存命中**：通常 < 10ms
-- **L2 SQLite 缓存命中**：通常 < 20ms
-- **Unsplash 直接成功**：受上游网络影响，历史平均约 700ms
-- **换词搜索**：受 `IMAGE_SEARCH_BUDGET_MS` 限制，默认不超过约 5 秒
+- **搜索缓存**：按查询词复用结果，先查内存 L1，再查 SQLite L2；相同查询的并发搜索会合并。
+- **找图预算**：原词搜索、LLM 与候选词搜索共用 `IMAGE_SEARCH_BUDGET_MS`，默认 5 秒；上游限流或鉴权故障进入冷却期。
+- **图片展示**：固定链接只读取图片映射；代理交付受独立的超时、体积和并发限制。
 
 ## 许可证
 

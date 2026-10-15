@@ -5,18 +5,6 @@
 
 const db = require('./init');
 
-const LOG_TYPES = Object.freeze({
-  ALL: 'all',
-  IMAGE: 'image',
-  ERROR: 'error'
-});
-
-const LOG_FILTERS = Object.freeze({
-  [LOG_TYPES.ALL]: '1 = 1',
-  [LOG_TYPES.IMAGE]: 'query_term IS NOT NULL',
-  [LOG_TYPES.ERROR]: 'query_term IS NULL'
-});
-
 const LOG_SORTS = Object.freeze({
   newest: 'timestamp DESC, id DESC',
   oldest: 'timestamp ASC, id ASC',
@@ -26,14 +14,13 @@ const LOG_RANGES = Object.freeze({ '1h': 3600000, '24h': 86400000, '7d': 6048000
 const LOG_SOURCES = Object.freeze({
   cache: "source = 'cache'",
   direct: "source = 'unsplash'",
-  rewritten: "source LIKE 'unsplash-retry-%'",
-  picsum: "source LIKE 'picsum%'"
+  rewritten: "source LIKE 'unsplash-retry-%'"
 });
 const LOG_FILTER_OPTIONS = Object.freeze({
   sort: Object.keys(LOG_SORTS),
   range: ['all', ...Object.keys(LOG_RANGES)],
   source: ['all', ...Object.keys(LOG_SOURCES)],
-  status: ['all', 'success', 'fallback']
+  status: ['all', 'success', 'failed']
 });
 
 let aggregateSnapshot;
@@ -42,10 +29,7 @@ let snapshotVersion;
 
 function updateSnapshot(logData) {
   if (!aggregateSnapshot) return;
-  const isImage = Boolean(logData.query_term);
-  aggregateSnapshot.total_logged_requests += 1;
-  aggregateSnapshot[isImage ? 'image_requests' : 'error_requests'] += 1;
-  if (!isImage) return;
+  aggregateSnapshot.image_requests += 1;
   if (logData.success) aggregateSnapshot.success_count += 1;
   if (logData.from_cache) aggregateSnapshot.cache_hit_count += 1;
   if (logData.response_time !== null && logData.response_time !== undefined) {
@@ -119,13 +103,12 @@ function logRequest(logData) {
  * 获取请求日志（分页）
  * @param {number} page - 页码（从1开始）
  * @param {number} limit - 每页数量
- * @param {'all'|'image'|'error'} type - 日志类型
- * @returns {{total: number, data: Array, page: number, limit: number, type: string}} 日志数据
+ * @param {Object} filters - 搜索、时间、结果、来源与排序条件
+ * @returns {{total: number, data: Array, page: number, limit: number}} 日志数据
  */
-function getLogs(page = 1, limit = 20, type = LOG_TYPES.ALL, filters = {}) {
+function getLogs(page = 1, limit = 20, filters = {}) {
   const offset = (page - 1) * limit;
-  const normalizedType = Object.hasOwn(LOG_FILTERS, type) ? type : LOG_TYPES.ALL;
-  const conditions = [LOG_FILTERS[normalizedType]];
+  const conditions = ['query_term IS NOT NULL'];
   const bindings = [];
   if (filters.q) {
     const pattern = '%' + filters.q.replace(/[\\%_]/g, '\\$&') + '%';
@@ -134,8 +117,8 @@ function getLogs(page = 1, limit = 20, type = LOG_TYPES.ALL, filters = {}) {
     bindings.push(...columns.map(() => pattern));
   }
   if (Object.hasOwn(LOG_SOURCES, filters.source)) conditions.push(LOG_SOURCES[filters.source]);
-  if (filters.status === 'success') conditions.push('query_term IS NOT NULL AND success = 1');
-  if (filters.status === 'fallback') conditions.push('query_term IS NOT NULL AND (success = 0 OR success IS NULL)');
+  if (filters.status === 'success') conditions.push('success = 1');
+  if (filters.status === 'failed') conditions.push('(success = 0 OR success IS NULL)');
   if (Object.hasOwn(LOG_RANGES, filters.range)) {
     conditions.push('timestamp >= ?');
     bindings.push(new Date(Date.now() - LOG_RANGES[filters.range]).toISOString().slice(0, 19).replace('T', ' '));
@@ -146,9 +129,7 @@ function getLogs(page = 1, limit = 20, type = LOG_TYPES.ALL, filters = {}) {
   if (conditions.length > 1) {
     total = db.prepare(`SELECT COUNT(*) AS count FROM request_logs WHERE ${whereClause}`).get(...bindings).count;
   } else {
-    const stats = getStats();
-    total = normalizedType === LOG_TYPES.IMAGE ? stats.imageRequests
-      : normalizedType === LOG_TYPES.ERROR ? stats.errorRequests : stats.totalLoggedRequests;
+    total = getStats().imageRequests;
   }
 
   const stmt = db.prepare(`
@@ -162,8 +143,8 @@ function getLogs(page = 1, limit = 20, type = LOG_TYPES.ALL, filters = {}) {
       retry_2_term,
       retry_3_term,
       success,
-      CASE WHEN query_term IS NULL THEN NULL ELSE final_url END AS final_url,
-      CASE WHEN query_term IS NULL THEN NULL ELSE source END AS source,
+      final_url,
+      source,
       response_time,
       error_message,
       from_cache
@@ -180,7 +161,6 @@ function getLogs(page = 1, limit = 20, type = LOG_TYPES.ALL, filters = {}) {
     data,
     page,
     limit,
-    type: normalizedType,
     totalPages: total > 0 ? Math.ceil(total / limit) : 0
   };
 }
@@ -194,20 +174,18 @@ function getStats() {
   if (!aggregateSnapshot || snapshotVersion !== dataVersion) {
     const aggregateStmt = db.prepare(`
     SELECT
-      COUNT(*) AS total_logged_requests,
-      SUM(CASE WHEN query_term IS NOT NULL THEN 1 ELSE 0 END) AS image_requests,
-      SUM(CASE WHEN query_term IS NULL THEN 1 ELSE 0 END) AS error_requests,
-      SUM(CASE WHEN query_term IS NOT NULL AND success = 1 THEN 1 ELSE 0 END) AS success_count,
-      SUM(CASE WHEN query_term IS NOT NULL AND from_cache = 1 THEN 1 ELSE 0 END) AS cache_hit_count,
-      SUM(CASE WHEN query_term IS NOT NULL AND success = 1 AND source = 'unsplash' THEN 1 ELSE 0 END) AS direct_unsplash_count,
-      SUM(CASE WHEN query_term IS NOT NULL AND success = 1 AND source LIKE 'unsplash-retry-%' THEN 1 ELSE 0 END) AS rewritten_unsplash_count,
-      SUM(CASE WHEN query_term IS NOT NULL AND success = 1 AND source = 'unsplash' THEN response_time ELSE 0 END) AS direct_time_sum,
-      COUNT(CASE WHEN query_term IS NOT NULL AND success = 1 AND source = 'unsplash' THEN response_time END) AS direct_timed_count,
-      SUM(CASE WHEN query_term IS NOT NULL AND success = 1 AND source LIKE 'unsplash-retry-%' THEN response_time ELSE 0 END) AS rewritten_time_sum,
-      COUNT(CASE WHEN query_term IS NOT NULL AND success = 1 AND source LIKE 'unsplash-retry-%' THEN response_time END) AS rewritten_timed_count,
-      SUM(CASE WHEN query_term IS NOT NULL THEN response_time ELSE 0 END) AS response_time_sum,
-      COUNT(CASE WHEN query_term IS NOT NULL THEN response_time END) AS timed_requests
-    FROM request_logs
+      COUNT(*) AS image_requests,
+      SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) AS success_count,
+      SUM(CASE WHEN from_cache = 1 THEN 1 ELSE 0 END) AS cache_hit_count,
+      SUM(CASE WHEN success = 1 AND source = 'unsplash' THEN 1 ELSE 0 END) AS direct_unsplash_count,
+      SUM(CASE WHEN success = 1 AND source LIKE 'unsplash-retry-%' THEN 1 ELSE 0 END) AS rewritten_unsplash_count,
+      SUM(CASE WHEN success = 1 AND source = 'unsplash' THEN response_time ELSE 0 END) AS direct_time_sum,
+      COUNT(CASE WHEN success = 1 AND source = 'unsplash' THEN response_time END) AS direct_timed_count,
+      SUM(CASE WHEN success = 1 AND source LIKE 'unsplash-retry-%' THEN response_time ELSE 0 END) AS rewritten_time_sum,
+      COUNT(CASE WHEN success = 1 AND source LIKE 'unsplash-retry-%' THEN response_time END) AS rewritten_timed_count,
+      SUM(response_time) AS response_time_sum,
+      COUNT(response_time) AS timed_requests
+    FROM request_logs WHERE query_term IS NOT NULL
   `);
     aggregateSnapshot = aggregateStmt.get();
     for (const key of Object.keys(aggregateSnapshot)) aggregateSnapshot[key] ??= 0;
@@ -221,7 +199,6 @@ function getStats() {
   }
   const aggregate = aggregateSnapshot;
   const imageRequests = aggregate.image_requests || 0;
-  const errorRequests = aggregate.error_requests || 0;
   const successCount = aggregate.success_count || 0;
   const cacheHitCount = aggregate.cache_hit_count || 0;
   const cacheMissCount = Math.max(0, imageRequests - cacheHitCount);
@@ -244,11 +221,7 @@ function getStats() {
   const sourcesDistribution = { ...sourceSnapshot };
 
   return {
-    // totalRequests keeps its original all-logs meaning for existing API consumers.
-    totalRequests: aggregate.total_logged_requests || 0,
-    totalLoggedRequests: aggregate.total_logged_requests || 0,
     imageRequests,
-    errorRequests,
     successCount,
     successRate,
     cacheHitCount,
@@ -279,6 +252,5 @@ module.exports = {
   logRequest,
   getLogs,
   getStats,
-  LOG_FILTER_OPTIONS,
-  LOG_TYPES
+  LOG_FILTER_OPTIONS
 };

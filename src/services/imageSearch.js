@@ -2,7 +2,6 @@
  * Coordinates direct and LLM-assisted Unsplash searches under one time budget.
  */
 
-const { descriptionToQuery } = require('../utils/urlParser');
 const { tryConsumeRequestSlot } = require('./rateLimit');
 
 const DEFAULT_SEARCH_BUDGET_MS = 5000;
@@ -113,7 +112,6 @@ function createImageSearcher(overrides = {}) {
     getLLMSearchCandidates: (...args) => require('./llm').getLLMSearchCandidates(...args),
     getFallbackCandidates: (...args) => require('./llm').getFallbackCandidates(...args),
     tryConsumeRequestSlot,
-    descriptionToQuery,
     now: Date.now,
     ...overrides
   };
@@ -162,10 +160,7 @@ function createImageSearcher(overrides = {}) {
 
       onRequest();
       return runWithDeadline(
-        options => dependencies.searchPhotos(
-          dependencies.descriptionToQuery(term),
-          options
-        ),
+        options => dependencies.searchPhotos(term, options),
         {
           deadline,
           operationName,

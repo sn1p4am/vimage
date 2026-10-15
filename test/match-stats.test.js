@@ -12,7 +12,7 @@ const { getStats, logRequest } = require('../src/db/logger');
 
 function createLog(overrides = {}) {
   return {
-    original_url: 'vimage_001_test.jpg',
+    original_url: '/api/images/resolve',
     query_term: 'test',
     retry_count: 0,
     retry_1_term: null,
@@ -42,54 +42,43 @@ test('Unsplash match rates and response times exclude non-matching requests', t 
   assert.equal(emptyStats.rewrittenUnsplashAvgResponseTime, null);
 
   logRequest(createLog());
-  logRequest(createLog({ original_url: 'vimage_002_direct.jpg' }));
-  logRequest(createLog({ original_url: 'vimage_003_direct.jpg' }));
+  logRequest(createLog());
+  logRequest(createLog());
   logRequest(createLog({
-    original_url: 'vimage_004_rewritten.jpg',
     retry_count: 1,
     retry_1_term: 'rewritten',
     source: 'unsplash-retry-1',
     response_time: 120
   }));
   logRequest(createLog({
-    original_url: 'vimage_005_cached.jpg',
     source: 'cache',
     from_cache: true,
     response_time: 1
   }));
   logRequest(createLog({
-    original_url: 'vimage_006_fallback.jpg',
     success: false,
-    source: 'picsum-all-failed',
+    source: 'search-failed',
+    final_url: null,
     response_time: 900
   }));
   logRequest(createLog({
-    original_url: 'vimage_007_failed-rewrite.jpg',
     retry_count: 2,
-    source: 'unsplash-retry-2',
+    source: 'search-failed',
+    final_url: null,
     success: false,
     response_time: 600
   }));
   for (let index = 0; index < 12; index += 1) {
-    logRequest(createLog({ original_url: `vimage_${String(index + 8).padStart(3, '0')}_direct.jpg` }));
+    logRequest(createLog());
   }
   logRequest(createLog({
-    original_url: 'vimage_020_rewritten-again.jpg',
     retry_count: 3,
-    retry_3_term: 'rewritten-again',
+    retry_3_term: 'rewritten again',
     source: 'unsplash-retry-3',
     response_time: 80
   }));
   logRequest(createLog({
-    original_url: 'vimage_021_direct-without-timing.jpg',
     response_time: null
-  }));
-  logRequest(createLog({
-    original_url: 'invalid.zip',
-    query_term: null,
-    success: false,
-    final_url: null,
-    source: null
   }));
 
   const stats = getStats();
@@ -103,5 +92,4 @@ test('Unsplash match rates and response times exclude non-matching requests', t 
   assert.equal(stats.rewrittenUnsplashAvgResponseTime, 100);
   assert.equal(stats.cacheHitCount, 1);
   assert.equal(stats.imageRequests, 21);
-  assert.equal(stats.errorRequests, 1);
 });

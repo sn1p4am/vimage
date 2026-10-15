@@ -72,14 +72,14 @@ test('authenticated resolution and fixed image delivery remain separate', async 
 
   await context.test('authentication happens before cache or search and rejects URL keys', async () => {
     for (const headers of [{}, { Authorization: 'Bearer wrong' }, { Cookie: 'vimage_admin_session=fake' }]) {
-      assert.equal((await resolveImage('same-term', { headers })).status, 401);
+      assert.equal((await resolveImage('same term', { headers })).status, 401);
     }
     assert.equal((await request(`/api/images/resolve?key=${key}`, { method: 'POST' })).status, 401);
     assert.equal(searches, 0);
   });
 
   await context.test('concurrent resolutions share work and return persistent IDs with configured origin', async () => {
-    const responses = await Promise.all(Array.from({ length: 20 }, () => resolveImage('same-term')));
+    const responses = await Promise.all(Array.from({ length: 20 }, () => resolveImage('same term')));
     assert.equal(searches, 1);
     for (const response of responses) {
       assert.equal(response.status, 200);
@@ -91,7 +91,7 @@ test('authenticated resolution and fixed image delivery remain separate', async 
       assert.equal(new URL(result.upstream_url).searchParams.get('w'), '640');
       assert.equal(new URL(result.upstream_url).searchParams.get('ixid'), 'tracking');
     }
-    assert.equal((await (await resolveImage('same-term')).json()).cached, true);
+    assert.equal((await (await resolveImage('same term')).json()).cached, true);
     assert.equal(searches, 1);
   });
 
@@ -110,14 +110,12 @@ test('authenticated resolution and fixed image delivery remain separate', async 
     assert.equal(db.prepare('SELECT COUNT(*) AS count FROM request_logs').get().count, countBefore);
   });
 
-  await context.test('mutated links and retired dynamic URLs never trigger search', async () => {
+  await context.test('invalid image IDs and query parameters never trigger search', async () => {
     for (const [route, status] of [
       ['/i/not-an-id', 404],
       [`/i/${'f'.repeat(32)}`, 404],
       [`/i/${asset.id}?query=dog`, 400],
-      [`/i/${asset.id}?url=http://127.0.0.1`, 400],
-      ['/vimage_001_dog.jpg', 410],
-      ['/%76image_001_dog.jpg', 410]
+      [`/i/${asset.id}?url=http://127.0.0.1`, 400]
     ]) {
       const response = await request(route);
       assert.equal(response.status, status);
@@ -152,14 +150,14 @@ test('authenticated resolution and fixed image delivery remain separate', async 
     assert.equal(searches, 1);
   });
 
-  await context.test('upstream failures return errors, not unstable fallback image mappings', async () => {
+  await context.test('upstream failures return errors without creating image mappings', async () => {
     const countBefore = db.prepare('SELECT COUNT(*) AS count FROM image_assets').get().count;
     for (const [query, result, status] of [
       ['empty', null, 502],
       ['limited', { rateLimited: true }, 503],
       ['unauthorized', { error: 'Unauthorized' }, 502],
       ['failed', new Error('Unexpected failure'), 500],
-      ['bad-url', { url: 'https://127.0.0.1/private' }, 500]
+      ['bad url', { url: 'https://127.0.0.1/private' }, 500]
     ]) {
       outcome = result;
       const response = await resolveImage(query);

@@ -4,13 +4,22 @@
 
 - `POST /api/images/resolve` 是唯一找图入口，使用 `Authorization: Bearer <API Key>`；后台 Cookie、URL 查询参数中的 Key 都不能代替它。
 - `GET /i/:id` 是公开的固定图片链接，只查询持久映射，绝不调用搜索或模型。未知 ID 返回 404，附加查询参数返回 400；上游故障返回错误，不换图。
-- 旧 `/vimage_...` 动态入口返回 410，即使带 API Key 也不会重新开放。旧页面需要通过新接口选图并替换链接。浏览器 / CDN 仍可能短暂使用旧入口已缓存的跳转；上线时应清理旧 CDN 缓存。
 - 搜索缓存有 TTL；`image_assets` 映射没有 TTL。清理搜索缓存、日志或重启容器不会清除固定映射。上游删除图片时固定链接仍可能失效，不保证第三方文件永远存在。
 - 图片宽度与质量在找图时确定，不能通过修改固定链接查询参数生成任意变体。
 
 ## 创建与轮换 Key
 
-在项目目录运行：
+Docker 部署无需在主机安装 Node.js。在项目目录完成镜像构建后运行：
+
+```bash
+mkdir -p .secrets
+chmod 700 .secrets
+docker compose run --rm --no-deps --user "$(id -u):$(id -g)" \
+  -v "$PWD/.secrets:/app/.secrets" \
+  vimage node scripts/generate-api-key.js
+```
+
+使用 Node.js 本机运行时，在项目目录执行：
 
 ```bash
 node scripts/generate-api-key.js
@@ -43,6 +52,8 @@ UNSPLASH_PROXY_APPROVED=false
 产品只分发仓库中的 `skills/vimage-images/` 目录，不把整个服务仓库、`.env` 或 `.secrets/` 挂入 Agent 沙箱。该目录的 `SKILL.md` 是配图指令，`references/search-image-tool.json` 是无凭据的工具定义；Skill 不会自动注册工具，也不是隔离安全边界。
 
 在可信后端注册名为 `search_image` 的工具，按 JSON 中的 `inputSchema` 校验模型参数并拒绝额外字段。该定义采用通用的 `name` / `inputSchema` / `outputSchema` 结构，接入具体工具框架时适配其封装，不改变参数边界。`width` 映射为下面示例里的 `w`，默认 900；质量由后端固定为 80，不交给模型控制。
+
+Agent 在调用前将配图需求转换为符合上下文语义的英文搜索词组，`query` 中单词用空格分隔，不用连字符。例如“好看的小女孩”调用 `search_image({"query":"beautiful girl","width":900})`，不直接发送中文或 `"beautiful-girl"`。这只规范请求关键词，不要求翻译正文或图片替代文本。
 
 后端使用既有产品登录上下文做用户权限与预算检查，不能从模型参数决定身份。只有后端可读取 Key、配置调用地址、发送认证头；完成请求后验证返回的固定 URL 属于配置的公开 origin，路径 ID 与 `id` 一致，并仅按 `outputSchema` 返回 `{id, url}`。不要将原始响应、请求配置、认证头或底层异常对象返回模型。错误可由工具框架提供脱敏后的状态码与 `Retry-After`，不要包含原始请求头或响应体。
 
@@ -80,9 +91,9 @@ async function searchImageTool({ query, width = 900 }) {
 }
 ```
 
-找图失败返回 502/503，不创建随机 Picsum 映射。没有稳定结果时 Agent 应保留占位或提示失败，不应无限重试。
+找图失败返回 502/503，不创建图片映射。没有结果时 Agent 应保留占位或提示失败，不应无限重试。
 
-Skill 只需告诉模型调用 `search_image` 工具并使用返回的完整 URL，不要自行拼图链接、添加参数或提供 API Key 参数。用户身份由产品登录上下文决定，不能信任模型传入的任意 user_id。工具仅可调用固定 Vimage 地址，不得允许模型指定接收认证头的 URL。
+Skill 包含工具调用约定与配图展示规则。模型使用返回的完整 URL，不要自行拼图链接、添加参数或提供 API Key 参数。用户身份由产品登录上下文决定，不能信任模型传入的任意 user_id。工具仅可调用固定 Vimage 地址，不得允许模型指定接收认证头的 URL。
 
 如果 Agent 能读文件、环境变量或执行 shell，把 Key 放在同一个沙箱的 `.env` 里不构成隔离。密钥持有者必须是 Agent 不能读取的独立可信后端。若 Agent 跑在用户设备，平台总 Key 仍留在服务器，客户端通过用户登录访问你的后端。
 

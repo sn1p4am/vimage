@@ -16,7 +16,7 @@ test('concurrent requests share one search and preserve per-request retry logs',
     setCachedImage: () => { writes += 1; }
   });
   const logs = Array.from({ length: 20 }, () => ({}));
-  const results = await Promise.all(logs.map(log => lookup('cute-cat', log)));
+  const results = await Promise.all(logs.map(log => lookup('cute cat', log)));
   assert.equal(searches, 1);
   assert.equal(writes, 1);
   assert.ok(results.every(result => result.source === 'unsplash-retry-1'));

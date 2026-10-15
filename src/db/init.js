@@ -32,7 +32,7 @@ function initDatabase() {
 
       -- 请求信息
       original_url TEXT NOT NULL,
-      query_term TEXT,  -- 允许为空，因为URL解析可能失败
+      query_term TEXT NOT NULL,
 
       -- 重试信息
       retry_count INTEGER DEFAULT 0,

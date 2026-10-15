@@ -1,5 +1,5 @@
 /**
- * Vimage - Unsplash图片代理服务
+ * Vimage - Agent 内容配图服务
  * 主入口文件
  */
 

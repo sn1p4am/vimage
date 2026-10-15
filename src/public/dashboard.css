@@ -81,7 +81,7 @@ h2 { font-size: 15px; font-weight: 650; }
 .cache { background: #5f8cb6; }
 .direct { background: #26816b; }
 .rewritten { background: #9caa63; }
-.fallback { background: #ce9b50; }
+.failed { background: #ce9b50; }
 .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex: 0 0 7px; }
 .match-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; padding: 13px 0; border-bottom: 1px solid #eef2ef; font-size: 12px; }
 .match-row > div { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; }
@@ -94,11 +94,6 @@ h2 { font-size: 15px; font-weight: 650; }
 .runtime-strip strong { display: block; font-size: 19px; font-weight: 600; margin: 8px 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .quota-track { max-width: 260px; height: 4px; margin-bottom: 8px; }
 .quota-track span { display: block; height: 100%; background: var(--accent); }
-.log-types { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
-.log-types button { display: flex; gap: 10px; align-items: center; border: 1px solid transparent; border-radius: 6px; padding: 8px 14px; color: var(--muted); background: transparent; font-weight: 600; }
-.log-types [aria-pressed="true"] { border-color: #c6ded1; color: var(--accent); background: var(--soft); }
-.log-types button span { font-size: 11px; font-weight: 500; }
-.scope-hint { margin-left: auto; color: var(--muted); font-size: 11px; }
 .filter-form { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; padding: 18px; border: 1px solid var(--line); background: white; border-radius: 8px; }
 .filter-form label { display: grid; gap: 6px; font-size: 11px; color: var(--muted); flex: 1 1 125px; }
 .filter-form .search-field { flex: 2 1 250px; }
@@ -206,7 +201,7 @@ body:has(dialog[open]) { overflow: hidden; }
 @media (max-width: 600px) {
   .topbar-inner, .workspace { width: calc(100% - 28px); }
   .topbar-inner { min-height: 64px; }
-  .brand-label, .service-state, .scope-hint { display: none; }
+  .brand-label, .service-state { display: none; }
   .brand { gap: 8px; }
   .workspace-toolbar { flex-wrap: wrap; padding-bottom: 12px; gap: 12px; }
   .view-tabs { gap: 28px; }

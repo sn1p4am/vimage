@@ -100,10 +100,10 @@ function clamp(value, min, max) {
 
 /**
  * 按请求参数调整图片尺寸和质量。
- * 支持 ?w=640&q=75，减少列表页和画廊页的图片体积。
+ * 使用找图请求体中的 w、q，减少列表页和画廊页的图片体积。
  *
  * @param {string} url - 原始图片URL
- * @param {object} options - 请求查询参数
+ * @param {object} options - 图片宽度和质量
  * @returns {string} 调整后的图片URL
  */
 function optimizeImageUrl(url, options = {}) {
@@ -135,23 +135,9 @@ function optimizeImageUrl(url, options = {}) {
   return url;
 }
 
-/**
- * 生成Picsum随机图片URL
- * @param {object} options - 请求查询参数
- * @returns {string} Picsum图片URL
- */
-function getPicsumRandomUrl(options = {}) {
-  const width = clamp(getPositiveInteger(options.w), 80, 2400) || 1200;
-  const height = clamp(getPositiveInteger(options.h), 80, 2400) || Math.round(width * 2 / 3);
-
-  // 使用时间戳确保每次都是不同的随机图片
-  return `https://picsum.photos/${width}/${height}?random=${Date.now()}`;
-}
-
 module.exports = {
   UnsplashError,
   parseRetryAfter,
   searchPhotos,
-  getPicsumRandomUrl,
   optimizeImageUrl
 };

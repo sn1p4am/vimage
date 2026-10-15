@@ -20,15 +20,6 @@ function resetCounterIfNeeded() {
 }
 
 /**
- * 检查是否达到速率限制
- * @returns {boolean} true表示已达到限制
- */
-function isRateLimitReached() {
-  resetCounterIfNeeded();
-  return requestCount >= RATE_LIMIT;
-}
-
-/**
  * 原子占用一次Unsplash请求额度
  * @returns {boolean} 是否成功占用额度
  */
@@ -65,7 +56,6 @@ function resetRateLimit() {
 }
 
 module.exports = {
-  isRateLimitReached,
   tryConsumeRequestSlot,
   getRateLimitStatus,
   resetRateLimit

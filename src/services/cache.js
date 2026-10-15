@@ -67,7 +67,7 @@ function cleanupExpiredPersistentEntries(force = false) {
 
 /**
  * 获取缓存的图片URL
- * @param {string} description - 描述词（如 "cute-cat"）
+ * @param {string} description - 搜索词组（如 "cute cat"）
  * @returns {{url: string, timestamp: number}|undefined} 缓存数据
  */
 function getCachedImage(description) {

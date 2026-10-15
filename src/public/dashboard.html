@@ -33,25 +33,24 @@
     <div id="statsError" class="notice danger" role="alert" hidden></div>
 
     <section id="overviewPanel" aria-labelledby="overviewTitle">
-      <div class="page-heading"><div><p class="eyebrow">OVERVIEW</p><h1 id="overviewTitle">运行概览</h1><p id="statsScope">统计范围：当前保留的请求日志，不含浏览器或 CDN 直接命中的请求。</p></div></div>
+      <div class="page-heading"><div><p class="eyebrow">OVERVIEW</p><h1 id="overviewTitle">运行概览</h1><p id="statsScope">统计范围：当前保留的找图请求日志，不含固定图片访问。</p></div></div>
       <div class="metrics-grid">
         <button type="button" class="metric" data-drill="image">
-          <span class="metric-label">图片请求<span aria-hidden="true">↗</span></span><strong class="metric-value" id="imageRequests">—</strong><span class="metric-note" id="excludedErrors">格式错误请求单独统计</span><span class="metric-link">查看全部图片请求</span>
+          <span class="metric-label">找图请求<span aria-hidden="true">↗</span></span><strong class="metric-value" id="imageRequests">—</strong><span class="metric-note">通过鉴权、参数与配额检查</span><span class="metric-link">查看全部找图请求</span>
         </button>
         <button type="button" class="metric" data-drill="success">
           <span class="metric-label">匹配成功率<span aria-hidden="true">↗</span></span><strong class="metric-value" id="successRate">—</strong><span class="metric-note" id="successRatio">Unsplash 或缓存匹配成功</span><span class="metric-link">查看成功请求</span>
         </button>
         <button type="button" class="metric" data-drill="cache">
-          <span class="metric-label">缓存命中率<span aria-hidden="true">↗</span></span><strong class="metric-value" id="cacheHitRate">—</strong><span class="metric-note" id="cacheRatio">应用缓存命中 / 图片请求</span><span class="metric-link">查看缓存请求</span>
+          <span class="metric-label">缓存命中率<span aria-hidden="true">↗</span></span><strong class="metric-value" id="cacheHitRate">—</strong><span class="metric-note" id="cacheRatio">应用缓存命中 / 找图请求</span><span class="metric-link">查看缓存请求</span>
         </button>
         <button type="button" class="metric" data-drill="slowest">
-          <span class="metric-label">平均处理耗时<span aria-hidden="true">↗</span></span><strong class="metric-value" id="avgResponseTime">—</strong><span class="metric-note">包含缓存与兜底，不含图片下载</span><span class="metric-link">排查最慢请求</span>
+          <span class="metric-label">平均处理耗时<span aria-hidden="true">↗</span></span><strong class="metric-value" id="avgResponseTime">—</strong><span class="metric-note">包含缓存与失败请求，不含图片下载</span><span class="metric-link">排查最慢请求</span>
         </button>
       </div>
       <div class="attention-strip">
-        <div><strong>需要关注</strong><span>未匹配请求与访问异常</span></div>
-        <button type="button" data-drill="fallback">未匹配 / 兜底 <strong id="fallbackCount">—</strong><span aria-hidden="true">↗</span></button>
-        <button type="button" data-drill="error">格式错误 <strong id="formatErrorCount">—</strong><span aria-hidden="true">↗</span></button>
+        <div><strong>需要关注</strong><span>排查未匹配与上游调用失败</span></div>
+        <button type="button" data-drill="failed">搜索失败 <strong id="failedCount">—</strong><span aria-hidden="true">↗</span></button>
       </div>
       <div class="analysis-grid">
         <section class="panel" aria-labelledby="sourcesTitle">
@@ -74,16 +73,11 @@
 
     <section id="logsPanel" aria-labelledby="logsTitle" hidden>
       <div class="page-heading"><div><p class="eyebrow">REQUEST LOGS</p><h1 id="logsTitle">请求日志</h1><p>搜索、定位异常、查看完整处理链路。所有时间均为北京时间。</p></div></div>
-      <div class="log-types" role="group" aria-label="日志类型">
-        <button type="button" data-log-type="image" aria-pressed="true">图片请求 <span id="imageLogCount">—</span></button>
-        <button type="button" data-log-type="error" aria-pressed="false">格式错误 <span id="errorLogCount">—</span></button>
-        <span class="scope-hint">数量为保留期内总量</span>
-      </div>
       <form id="filterForm" class="filter-form" role="search" aria-label="筛选请求日志">
         <label class="search-field">搜索日志<input type="search" id="searchInput" name="q" placeholder="关键词、请求路径或错误信息" maxlength="200" autocomplete="off"></label>
         <label>时间范围<select id="rangeFilter" name="range"><option value="all">全部保留日志</option><option value="1h">最近 1 小时</option><option value="24h">最近 24 小时</option><option value="7d">最近 7 天</option><option value="30d">最近 30 天</option></select></label>
-        <label>处理结果<select id="statusFilter" name="status"><option value="all">全部结果</option><option value="success">匹配成功</option><option value="fallback">未匹配 / 兜底</option></select></label>
-        <label>图片来源<select id="sourceFilter" name="source"><option value="all">全部来源</option><option value="cache">应用缓存</option><option value="direct">Unsplash 原词</option><option value="rewritten">Unsplash 换词</option><option value="picsum">Picsum 兜底</option></select></label>
+        <label>处理结果<select id="statusFilter" name="status"><option value="all">全部结果</option><option value="success">匹配成功</option><option value="failed">匹配失败</option></select></label>
+        <label>图片来源<select id="sourceFilter" name="source"><option value="all">全部来源</option><option value="cache">应用缓存</option><option value="direct">Unsplash 原词</option><option value="rewritten">Unsplash 换词</option></select></label>
         <button type="submit" class="button primary">应用筛选</button>
         <button type="button" class="button subtle" id="resetFilters">重置</button>
       </form>

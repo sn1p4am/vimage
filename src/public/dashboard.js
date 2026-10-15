@@ -1,9 +1,9 @@
 const byId = id => document.getElementById(id);
-const defaults = { view: 'overview', type: 'image', q: '', range: 'all', status: 'all', source: 'all', sort: 'newest', page: 1, limit: 20 };
+const defaults = { view: 'overview', q: '', range: 'all', status: 'all', source: 'all', sort: 'newest', page: 1, limit: 20 };
 const choices = {
-  view: ['overview', 'logs'], type: ['image', 'error'],
-  range: ['all', '1h', '24h', '7d', '30d'], status: ['all', 'success', 'fallback'],
-  source: ['all', 'cache', 'direct', 'rewritten', 'picsum'], sort: ['newest', 'oldest', 'slowest']
+  view: ['overview', 'logs'],
+  range: ['all', '1h', '24h', '7d', '30d'], status: ['all', 'success', 'failed'],
+  source: ['all', 'cache', 'direct', 'rewritten'], sort: ['newest', 'oldest', 'slowest']
 };
 const filterControls = { q: 'searchInput', range: 'rangeFilter', status: 'statusFilter', source: 'sourceFilter', sort: 'sortFilter' };
 const state = { ...defaults, total: 0, totalPages: 0, logs: [], loading: false, requestId: 0, controller: null, selectedLog: null, redirecting: false };
@@ -19,7 +19,6 @@ function readLocation() {
   state.page = Number.isSafeInteger(page) && page > 0 ? page : 1;
   const limit = Number(params.get('limit'));
   if ([20, 50, 100].includes(limit)) state.limit = limit;
-  if (state.type === 'error') state.status = state.source = 'all';
 }
 
 function saveLocation(replace = false) {
@@ -60,19 +59,17 @@ function sourceLabel(source) {
   if (source === 'search-failed') return '搜索失败';
   if (source === 'unsplash') return 'Unsplash 原词';
   if (source?.startsWith('unsplash-retry-')) return '换词命中 · 第 ' + source.slice(-1) + ' 次';
-  if (source?.startsWith('picsum')) return 'Picsum 兜底';
   return source || '—';
 }
 function resultBadge(log) {
-  if (!log.query_term) return badge('格式拒绝', 'danger');
   if (log.success) return badge('匹配成功', 'success');
-  return badge(log.source?.startsWith('picsum') ? '随机兜底' : '匹配失败', 'warning');
+  return badge('匹配失败', 'warning');
 }
 function safeImageUrl(value) {
   try {
     const url = new URL(value);
     return url.protocol === 'https:' && !url.username && !url.password
-      && ['images.unsplash.com', 'picsum.photos'].includes(url.hostname) ? url : null;
+      && url.hostname === 'images.unsplash.com' ? url : null;
   } catch { return null; }
 }
 function imagePreview(log, large = false) {
@@ -84,10 +81,8 @@ function imagePreview(log, large = false) {
   link.rel = 'noopener noreferrer';
   link.setAttribute('aria-label', '在新标签页查看图片');
   if (!large) {
-    if (url.hostname === 'images.unsplash.com') {
-      url.searchParams.set('w', '160');
-      url.searchParams.set('q', '40');
-    } else url.pathname = '/160/112';
+    url.searchParams.set('w', '160');
+    url.searchParams.set('q', '40');
   }
   const image = createElement('img');
   image.alt = large ? log.query_term || '返回图片' : '';
@@ -103,9 +98,8 @@ function imagePreview(log, large = false) {
 
 function drillInto(kind) {
   Object.assign(state, defaults, { view: 'logs' });
-  if (kind === 'error') state.type = 'error';
-  if (kind === 'success' || kind === 'fallback') state.status = kind;
-  if (['cache', 'direct', 'rewritten', 'picsum'].includes(kind)) state.source = kind;
+  if (kind === 'success' || kind === 'failed') state.status = kind;
+  if (['cache', 'direct', 'rewritten'].includes(kind)) state.source = kind;
   if (kind === 'slowest') state.sort = 'slowest';
   syncControls();
   saveLocation();
@@ -118,24 +112,20 @@ function renderStats(data) {
   const cached = Number(data.cacheHitCount || 0);
   const direct = Number(data.directUnsplashCount || 0);
   const rewritten = Number(data.rewrittenUnsplashCount || 0);
-  const fallback = Math.max(0, count - success);
+  const failed = Math.max(0, count - success);
   byId('imageRequests').textContent = formatNumber(count);
-  byId('excludedErrors').textContent = '另有 ' + formatNumber(data.errorRequests) + ' 条格式错误';
   byId('successRate').textContent = percent(success, count);
   byId('successRatio').textContent = formatNumber(success) + ' / ' + formatNumber(count) + ' 次匹配成功';
   byId('cacheHitRate').textContent = percent(cached, count);
   byId('cacheRatio').textContent = formatNumber(cached) + ' 次缓存命中 · 无需外部搜索';
   byId('avgResponseTime').textContent = count ? duration(data.avgResponseTime) : '—';
-  byId('fallbackCount').textContent = formatNumber(fallback);
-  byId('formatErrorCount').textContent = formatNumber(data.errorRequests);
-  byId('imageLogCount').textContent = formatNumber(count);
-  byId('errorLogCount').textContent = formatNumber(data.errorRequests);
+  byId('failedCount').textContent = formatNumber(failed);
   byId('statsScope').textContent = '统计范围：当前保留日志'
     + (data.retentionDays > 0 ? '（自动保留 ' + data.retentionDays + ' 天）' : '（未启用自动清理）')
-    + '。不含浏览器或 CDN 直接命中的请求；不随日志筛选变化。';
+    + '。仅统计进入找图流程的请求，不含鉴权、参数或配额拒绝及固定图片访问；不随日志筛选变化。';
   const sources = [
     ['应用缓存', cached, 'cache', 'cache'], ['Unsplash 原词', direct, 'direct', 'direct'],
-    ['Unsplash 换词', rewritten, 'rewritten', 'rewritten'], ['未匹配 / 兜底', fallback, 'fallback', 'fallback']
+    ['Unsplash 换词', rewritten, 'rewritten', 'rewritten'], ['搜索失败', failed, 'failed', 'failed']
   ];
   const distribution = byId('sourceDistribution');
   distribution.replaceChildren();
@@ -158,7 +148,7 @@ function renderStats(data) {
   byId('rewrittenUnsplashCount').textContent = formatNumber(rewritten) + ' 次';
   byId('rewrittenUnsplashRate').textContent = percent(rewritten, direct + rewritten);
   byId('rewrittenUnsplashTime').textContent = '平均 ' + duration(data.rewrittenUnsplashAvgResponseTime);
-  byId('matchNote').textContent = direct + rewritten ? '共 ' + formatNumber(direct + rewritten) + ' 次成功搜索；缓存与随机兜底不参与此处占比。' : '暂无成功搜索，收到请求后显示命中效率。';
+  byId('matchNote').textContent = direct + rewritten ? '共 ' + formatNumber(direct + rewritten) + ' 次成功搜索；缓存与失败请求不参与此处占比。' : '暂无成功搜索，收到请求后显示命中效率。';
   const quota = data.rateLimitStatus || {};
   const cache = data.cacheStats || {};
   byId('rateLimit').textContent = formatNumber(quota.current) + ' / ' + formatNumber(quota.limit);
@@ -183,18 +173,17 @@ function detailButton(log) {
 function renderLogs() {
   if (!state.logs.length) {
     const filtered = hasFilters();
-    showLogState(filtered ? '没有符合条件的日志' : '暂无' + (state.type === 'error' ? '格式错误' : '图片请求'),
+    showLogState(filtered ? '没有符合条件的日志' : '暂无找图请求',
       filtered ? '试试缩短搜索词、扩大时间范围，或清除筛选。' : '新的请求记录会显示在这里。', filtered ? resetFilters : null, '清除筛选');
     return;
   }
-  const isError = state.type === 'error';
-  const preview = byId('showPreviews').checked && !isError;
+  const preview = byId('showPreviews').checked;
   const wrapper = createElement('div', 'table-scroll');
   const table = createElement('table', 'logs-table');
-  table.setAttribute('aria-label', isError ? '格式错误日志' : '图片请求日志');
+  table.setAttribute('aria-label', '找图请求日志');
   const head = createElement('thead');
   const header = createElement('tr');
-  const columns = [['时间 / 北京', 'time'], [isError ? '请求路径 / 原因' : '查询词 / 请求路径', 'query'], ['来源', 'source'], ['结果', 'result'], ['耗时', 'duration']];
+  const columns = [['时间 / 北京', 'time'], ['查询词 / 请求路径', 'query'], ['来源', 'source'], ['结果', 'result'], ['耗时', 'duration']];
   if (preview) columns.push(['预览', 'preview']);
   columns.push(['操作', 'action']);
   for (const [label, name] of columns) {
@@ -209,8 +198,8 @@ function renderLogs() {
     const row = createElement('tr');
     const time = createElement('td', 'time-cell', timestamp(log.timestamp));
     const query = createElement('td');
-    const mainText = isError ? log.original_url : log.query_term;
-    const secondaryText = isError ? log.error_message : log.original_url;
+    const mainText = log.query_term;
+    const secondaryText = log.original_url;
     const primary = createElement('span', 'query-primary', mainText || '—');
     primary.title = mainText || '';
     const secondary = createElement('span', 'request-path', secondaryText || '—');
@@ -274,7 +263,7 @@ function openDetail(log) {
   if (log.error_message) {
     content.append(createElement('h3', '', '错误 / 降级原因'), createElement('div', 'detail-error', log.error_message));
   } else if (log.query_term && !log.success) {
-    content.append(createElement('div', 'detail-error', '未匹配到图片或搜索预算已用尽。随机兜底不代表语义匹配成功。'));
+    content.append(createElement('div', 'detail-error', '未匹配到图片或搜索预算已用尽。'));
   }
   if (log.query_term) {
     content.append(createElement('h3', '', '处理链路'));
@@ -298,7 +287,6 @@ function openDetail(log) {
     link.target = '_blank';
     link.rel = 'noopener noreferrer';
     content.append(link);
-    if (url.hostname === 'picsum.photos') content.append(createElement('p', 'muted', '随机兜底预览可能与请求时的图片不同。'));
   }
   const raw = createElement('details');
   raw.append(createElement('summary', '', '查看原始 JSON'), createElement('pre', '', JSON.stringify(log, null, 2)));
@@ -317,10 +305,7 @@ function syncControls() {
     if (button.dataset.view === state.view) button.setAttribute('aria-current', 'page');
     else button.removeAttribute('aria-current');
   });
-  document.querySelectorAll('[data-log-type]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.logType === state.type)));
   for (const [name, id] of Object.entries(filterControls)) byId(id).value = state[name];
-  byId('statusFilter').disabled = byId('sourceFilter').disabled = state.type === 'error';
-  byId('showPreviews').disabled = state.type === 'error';
   byId('pageSize').value = String(state.limit);
   renderFilterChips();
   updateRefreshMode();
@@ -399,7 +384,7 @@ async function loadData() {
   byId('logsFrame').setAttribute('aria-busy', 'true');
   renderPagination();
   const params = new URLSearchParams();
-  for (const name of ['type', 'page', 'limit', 'q', 'range', 'status', 'source', 'sort']) params.set(name, String(state[name]));
+  for (const name of ['page', 'limit', 'q', 'range', 'status', 'source', 'sort']) params.set(name, String(state[name]));
   const wantsLogs = state.view === 'logs';
   const timeout = window.setTimeout(() => controller.abort(), 15000);
   try {
@@ -460,14 +445,6 @@ document.querySelectorAll('[data-view]').forEach(button => button.addEventListen
   loadData();
 }));
 document.querySelectorAll('[data-drill]').forEach(button => button.addEventListener('click', () => drillInto(button.dataset.drill)));
-document.querySelectorAll('[data-log-type]').forEach(button => button.addEventListener('click', () => {
-  state.type = button.dataset.logType;
-  state.source = state.status = 'all';
-  state.page = 1;
-  syncControls();
-  saveLocation();
-  loadData();
-}));
 byId('filterForm').addEventListener('submit', event => {
   event.preventDefault();
   for (const [name, id] of Object.entries(filterControls)) state[name] = byId(id).value.trim();

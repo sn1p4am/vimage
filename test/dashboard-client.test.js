@@ -25,16 +25,13 @@ test('detail images fit within a maximum height without cropping or stretching',
 test('detail previews retain returned image URLs while list thumbnails stay small', () => {
   const { client } = createClient();
   const unsplash = 'https://images.unsplash.com/photo-test?w=1080&q=80';
-  const picsum = 'https://picsum.photos/400/1200?random=123';
-  for (const url of [unsplash, picsum]) {
-    const preview = client.imagePreview({ final_url: url, query_term: 'test' }, true);
-    assert.equal(preview.children[0].src, url);
-    assert.equal(preview.href, url);
-  }
+  const preview = client.imagePreview({ final_url: unsplash, query_term: 'test' }, true);
+  assert.equal(preview.children[0].src, unsplash);
+  assert.equal(preview.href, unsplash);
   const thumbnail = client.imagePreview({ final_url: unsplash });
   assert.equal(new URL(thumbnail.children[0].src).searchParams.get('w'), '160');
-  const fallbackThumbnail = client.imagePreview({ final_url: picsum });
-  assert.equal(new URL(fallbackThumbnail.children[0].src).pathname, '/160/112');
+  assert.equal(new URL(thumbnail.children[0].src).searchParams.get('q'), '40');
+  assert.equal(thumbnail.href, unsplash);
 });
 
 function createClient(responseStatus = 200) {
@@ -75,14 +72,18 @@ test('dashboard restores only supported filters and restricts preview URLs', () 
   assert.equal(client.snapshot().view, 'logs');
   assert.equal(client.snapshot().q, 'cat');
   assert.equal(client.snapshot().sort, 'slowest');
-  location.search = '?type=error&status=success&source=cache&limit=10000&page=-1&sort=invalid';
+  location.search = '?status=invalid&source=invalid&limit=10000&page=-1&sort=invalid';
   client.readLocation();
   assert.equal(client.snapshot().status, 'all');
   assert.equal(client.snapshot().source, 'all');
   assert.equal(client.snapshot().limit, 20);
   assert.equal(client.snapshot().page, 1);
   assert.equal(client.snapshot().sort, 'newest');
-  for (const value of ['javascript:alert(1)', 'http://images.unsplash.com/a', 'https://images.unsplash.com.evil.invalid/a', 'https://user:password@images.unsplash.com/a']) {
+  location.search = '?view=logs&status=failed&source=direct';
+  client.readLocation();
+  assert.equal(client.snapshot().status, 'failed');
+  assert.equal(client.snapshot().source, 'direct');
+  for (const value of ['javascript:alert(1)', 'http://images.unsplash.com/a', 'https://images.unsplash.com.evil.invalid/a', 'https://user:password@images.unsplash.com/a', 'https://other.example.com/photo']) {
     assert.equal(client.safeImageUrl(value), null);
   }
   assert.equal(client.safeImageUrl('https://images.unsplash.com/photo-test').hostname, 'images.unsplash.com');

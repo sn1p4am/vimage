@@ -6,7 +6,7 @@
 const express = require('express');
 const router = express.Router();
 
-const { getStats, getLogs, LOG_TYPES, LOG_FILTER_OPTIONS } = require('../db/logger');
+const { getStats, getLogs, LOG_FILTER_OPTIONS } = require('../db/logger');
 const { getRateLimitStatus } = require('../services/rateLimit');
 const { getCacheStats } = require('../services/cache');
 
@@ -40,17 +40,13 @@ router.get('/logs', (req, res) => {
   try {
     const page = parsePositiveInteger(req.query.page, 1);
     const limit = parsePositiveInteger(req.query.limit, 20);
-    const type = typeof req.query.type === 'string' ? req.query.type : LOG_TYPES.ALL;
+    const allowedParameters = ['page', 'limit', 'q', ...Object.keys(LOG_FILTER_OPTIONS)];
+    if (Object.keys(req.query).some(name => !allowedParameters.includes(name))) {
+      return res.status(400).json({ error: 'Unsupported log query parameter' });
+    }
 
     if (limit > 100) {
       return res.status(400).json({ error: 'Limit must be between 1 and 100' });
-    }
-
-    if (!Object.values(LOG_TYPES).includes(type)) {
-      return res.status(400).json({
-        error: 'Invalid log type',
-        allowedTypes: Object.values(LOG_TYPES)
-      });
     }
 
     const filters = {};
@@ -67,7 +63,7 @@ router.get('/logs', (req, res) => {
       }
       filters.q = req.query.q.trim();
     }
-    const logs = getLogs(page, limit, type, filters);
+    const logs = getLogs(page, limit, filters);
     res.json(logs);
   } catch (error) {
     console.error('Logs API error:', error);

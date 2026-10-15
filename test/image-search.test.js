@@ -14,7 +14,6 @@ function createLogData() {
 
 function createSearcher(overrides = {}) {
   return createImageSearcher({
-    descriptionToQuery: value => value,
     tryConsumeRequestSlot: () => true,
     getFallbackCandidates: () => [],
     searchBudgetMs: 500,
@@ -27,7 +26,10 @@ function createSearcher(overrides = {}) {
 test('direct Unsplash hit does not call the LLM', async () => {
   let llmCalls = 0;
   const search = createSearcher({
-    searchPhotos: async term => ({ total: 1, url: `https://images.test/${term}` }),
+    searchPhotos: async term => {
+      assert.equal(term, 'beautiful girl');
+      return { total: 1, url: 'https://images.test/portrait' };
+    },
     getLLMSearchCandidates: async () => {
       llmCalls += 1;
       return ['alternative'];
@@ -35,10 +37,10 @@ test('direct Unsplash hit does not call the LLM', async () => {
   });
   const logData = createLogData();
 
-  const result = await search('cute-girl', logData);
+  const result = await search('beautiful girl', logData);
 
   assert.deepEqual(result, {
-    url: 'https://images.test/cute-girl',
+    url: 'https://images.test/portrait',
     source: 'unsplash'
   });
   assert.equal(llmCalls, 0);
@@ -51,28 +53,28 @@ test('one LLM call supplies sequential candidates and preserves retry fields', a
   const search = createSearcher({
     searchPhotos: async term => {
       searchedTerms.push(term);
-      return term === 'young-woman'
+      return term === 'young woman'
         ? { total: 1, url: 'https://images.test/match' }
         : { total: 0, url: null };
     },
     getLLMSearchCandidates: async () => {
       llmCalls += 1;
-      return ['portrait', 'young-woman', 'woman'];
+      return ['portrait', 'young woman', 'woman'];
     }
   });
   const logData = createLogData();
 
-  const result = await search('cute-girl', logData);
+  const result = await search('beautiful girl', logData);
 
   assert.equal(llmCalls, 1);
-  assert.deepEqual(searchedTerms, ['cute-girl', 'portrait', 'young-woman']);
+  assert.deepEqual(searchedTerms, ['beautiful girl', 'portrait', 'young woman']);
   assert.deepEqual(result, {
     url: 'https://images.test/match',
     source: 'unsplash-retry-2'
   });
   assert.equal(logData.retry_count, 2);
   assert.equal(logData.retry_1_term, 'portrait');
-  assert.equal(logData.retry_2_term, 'young-woman');
+  assert.equal(logData.retry_2_term, 'young woman');
   assert.equal(logData.retry_3_term, null);
 });
 
@@ -108,7 +110,7 @@ test('overall budget stops later candidates', async () => {
     llmTimeoutMs: 100,
     searchPhotos: async (term, options) => {
       searchedTerms.push(term);
-      if (term === 'slow-candidate') {
+      if (term === 'slow candidate') {
         await new Promise((resolve, reject) => {
           const timeoutId = setTimeout(resolve, 300);
           options.signal.addEventListener('abort', () => {
@@ -119,7 +121,7 @@ test('overall budget stops later candidates', async () => {
       }
       return { total: 0, url: null };
     },
-    getLLMSearchCandidates: async () => ['slow-candidate', 'must-not-run']
+    getLLMSearchCandidates: async () => ['slow candidate', 'must not run']
   });
   const logData = createLogData();
   const startedAt = Date.now();
@@ -127,7 +129,7 @@ test('overall budget stops later candidates', async () => {
   const result = await search('original', logData);
 
   assert.equal(result, null);
-  assert.deepEqual(searchedTerms, ['original', 'slow-candidate']);
+  assert.deepEqual(searchedTerms, ['original', 'slow candidate']);
   assert.equal(logData.retry_count, 1);
   assert.ok(Date.now() - startedAt < 200);
 });
@@ -139,7 +141,7 @@ test('LLM timeout uses local candidates within the remaining budget', async () =
     llmTimeoutMs: 20,
     searchPhotos: async term => {
       searchedTerms.push(term);
-      return term === 'local-fallback'
+      return term === 'local candidate'
         ? { total: 1, url: 'https://images.test/local-fallback' }
         : { total: 0, url: null };
     },
@@ -153,7 +155,7 @@ test('LLM timeout uses local candidates within the remaining budget', async () =
       });
       return [];
     },
-    getFallbackCandidates: () => ['local-fallback']
+    getFallbackCandidates: () => ['local candidate']
   });
   const logData = createLogData();
 
@@ -163,7 +165,7 @@ test('LLM timeout uses local candidates within the remaining budget', async () =
     url: 'https://images.test/local-fallback',
     source: 'unsplash-retry-1'
   });
-  assert.deepEqual(searchedTerms, ['original', 'local-fallback']);
+  assert.deepEqual(searchedTerms, ['original', 'local candidate']);
   assert.equal(logData.retry_count, 1);
 });
 
@@ -176,7 +178,7 @@ test('rate limit is checked before every Unsplash request', async () => {
       unsplashCalls += 1;
       return { total: 0, url: null };
     },
-    getLLMSearchCandidates: async () => ['retry-one', 'retry-two']
+    getLLMSearchCandidates: async () => ['retry one', 'retry two']
   });
   const logData = createLogData();
 
@@ -206,9 +208,9 @@ for (const status of [401, 403, 429, 503]) {
     const firstLog = createLogData();
     const first = await search('original', firstLog);
     assert.equal(firstLog.error_message, `HTTP ${status}`);
-    assert.deepEqual(await search('different-term', createLogData()), first);
+    assert.deepEqual(await search('different term', createLogData()), first);
     now = status === 429 ? 1499 : 1099;
-    assert.deepEqual(await search('another-term', createLogData()), first);
+    assert.deepEqual(await search('another term', createLogData()), first);
     assert.equal(searches, 1);
     assert.equal(llmCalls, 0);
     now += 2;

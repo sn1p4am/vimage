@@ -30,8 +30,8 @@ Return up to three distinct English search alternatives, ordered from most speci
 2. Try another common phrasing while preserving the subject.
 3. Simplify to the core visual subject.
 
-Do not repeat the original term. Return JSON only:
-{"candidates":["first-term","second-term","core-subject"]}`;
+Use spaces between words, not hyphens. Do not repeat the original term. Return JSON only:
+{"candidates":["first phrase","second phrase","core subject"]}`;
 }
 
 function normalizeCandidate(value) {
@@ -42,7 +42,8 @@ function normalizeCandidate(value) {
   const normalized = value
     .trim()
     .replace(/^['"]|['"]$/g, '')
-    .replace(/\s+/g, '-');
+    .replace(/[-_\s]+/g, ' ')
+    .trim();
 
   return normalized || null;
 }
@@ -88,10 +89,10 @@ function parseCandidates(content, originalTerm) {
     parsed = JSON.parse(jsonObject[0]);
   }
 
-  const values = Array.isArray(parsed.candidates)
-    ? parsed.candidates
-    : [parsed.synonym];
-  const candidates = uniqueCandidates(values, originalTerm);
+  if (!Array.isArray(parsed?.candidates)) {
+    throw new Error('Invalid LLM response format');
+  }
+  const candidates = uniqueCandidates(parsed.candidates, originalTerm);
 
   if (candidates.length === 0) {
     throw new Error('LLM returned no usable search candidates');
@@ -102,7 +103,7 @@ function parseCandidates(content, originalTerm) {
 
 function getFallbackCandidates(originalTerm) {
   const words = originalTerm
-    .split(/[-_\s]+/)
+    .split(/\s+/)
     .map(word => word.trim())
     .filter(Boolean);
 
@@ -179,17 +180,8 @@ async function getLLMSearchCandidates(originalTerm, options = {}) {
   }
 }
 
-/**
- * Backward-compatible helper for callers that still request one retry term.
- */
-async function getLLMSynonym(originalTerm, retryNum = 1, options = {}) {
-  const candidates = await getLLMSearchCandidates(originalTerm, options);
-  return candidates[Math.min(Math.max(retryNum, 1), candidates.length) - 1] || originalTerm;
-}
-
 module.exports = {
   getLLMSearchCandidates,
-  getLLMSynonym,
   parseCandidates,
   getFallbackCandidates
 };

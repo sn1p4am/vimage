@@ -15,7 +15,7 @@ const imageRouter = require('../src/routes/image').createImageRouter();
 
 function createLog(overrides = {}) {
   return {
-    original_url: 'vimage_001_test.jpg',
+    original_url: '/api/images/resolve',
     query_term: 'test',
     retry_count: 0,
     retry_1_term: null,
@@ -38,97 +38,66 @@ async function listen(app) {
   });
 }
 
-test('monitoring metrics and log filters exclude malformed requests', async t => {
-  t.after(() => {
+test('monitoring reports search outcomes without counting image delivery or unknown routes', async context => {
+  context.after(() => {
     db.close();
     fs.rmSync(testDirectory, { recursive: true, force: true });
   });
 
   logRequest(createLog());
   logRequest(createLog({
-    original_url: 'vimage_002_cached.jpg',
     query_term: 'cached',
     source: 'cache',
     response_time: 0,
     from_cache: true
   }));
   logRequest(createLog({
-    original_url: 'vimage_003_failed.jpg',
     query_term: 'failed',
     success: false,
-    source: 'picsum-all-failed',
+    source: 'search-failed',
+    final_url: null,
     response_time: 100,
     from_cache: false
   }));
 
-  // Simulate a historical row written before malformed requests were classified separately.
-  logRequest(createLog({
-    original_url: 'app_staging.zip',
-    query_term: null,
-    success: false,
-    source: 'picsum-error',
-    final_url: 'https://picsum.photos/1200/800',
-    response_time: 1,
-    error_message: 'Invalid URL format',
-    from_cache: false
-  }));
-
   const stats = getStats();
-  assert.equal(stats.totalLoggedRequests, 4);
   assert.equal(stats.imageRequests, 3);
-  assert.equal(stats.errorRequests, 1);
   assert.equal(stats.successCount, 2);
   assert.equal(stats.successRate, 66.7);
   assert.equal(stats.cacheHitCount, 1);
   assert.equal(stats.cacheMissCount, 2);
   assert.equal(stats.cacheHitRate, 33.3);
   assert.equal(stats.avgResponseTime, 40);
-  assert.equal(stats.sourcesDistribution['picsum-error'], undefined);
+  assert.equal(stats.sourcesDistribution['search-failed'], 1);
 
-  const imageLogs = getLogs(1, 20, 'image');
-  const errorLogs = getLogs(1, 20, 'error');
-  const allLogs = getLogs(1, 20, 'all');
+  const imageLogs = getLogs(1, 20);
   assert.equal(imageLogs.total, 3);
-  assert.equal(errorLogs.total, 1);
-  assert.equal(allLogs.total, imageLogs.total + errorLogs.total);
-  assert.equal(errorLogs.data[0].source, null);
-  assert.equal(errorLogs.data[0].final_url, null);
+  assert.equal(getLogs(1, 20, { status: 'failed' }).data[0].final_url, null);
   assert.equal(imageLogs.data.find(log => log.source === 'cache').response_time, 0);
 
   const app = express();
   app.use('/api', apiRouter);
   app.use('/', imageRouter);
   const server = await listen(app);
-  t.after(() => new Promise(resolve => server.close(resolve)));
+  context.after(() => new Promise(resolve => server.close(resolve)));
   const baseUrl = `http://127.0.0.1:${server.address().port}`;
 
-  const invalidResponse = await fetch(`${baseUrl}/app_backup.zip`, { redirect: 'manual' });
-  assert.equal(invalidResponse.status, 404);
-  assert.equal(invalidResponse.headers.get('location'), null);
+  for (const route of ['/unknown.jpg', '/nested/unknown.jpg', '/i/unknown']) {
+    const invalidResponse = await fetch(baseUrl + route, { redirect: 'manual' });
+    assert.equal(invalidResponse.status, 404);
+    assert.equal(invalidResponse.headers.get('location'), null);
+  }
+  assert.deepEqual(getStats(), stats);
 
-  const statsAfterInvalidRequest = getStats();
-  assert.equal(statsAfterInvalidRequest.imageRequests, stats.imageRequests);
-  assert.equal(statsAfterInvalidRequest.errorRequests, stats.errorRequests + 1);
-  assert.equal(statsAfterInvalidRequest.successRate, stats.successRate);
-  assert.equal(statsAfterInvalidRequest.cacheHitRate, stats.cacheHitRate);
-  assert.equal(statsAfterInvalidRequest.avgResponseTime, stats.avgResponseTime);
-
-  const latestError = getLogs(1, 1, 'error').data[0];
-  assert.equal(latestError.original_url, 'app_backup.zip');
-  assert.equal(latestError.query_term, null);
-  assert.equal(latestError.source, null);
-  assert.equal(latestError.final_url, null);
-
-  const filteredResponse = await fetch(`${baseUrl}/api/logs?type=error&page=1&limit=1`);
+  const filteredResponse = await fetch(`${baseUrl}/api/logs?status=failed&page=1&limit=1`);
   assert.equal(filteredResponse.status, 200);
   const filteredBody = await filteredResponse.json();
-  assert.equal(filteredBody.type, 'error');
-  assert.equal(filteredBody.total, 2);
+  assert.equal(filteredBody.total, 1);
   assert.equal(filteredBody.data.length, 1);
-  assert.equal(filteredBody.data[0].source, null);
+  assert.equal(filteredBody.data[0].source, 'search-failed');
 
-  const invalidTypeResponse = await fetch(`${baseUrl}/api/logs?type=invalid`);
-  assert.equal(invalidTypeResponse.status, 400);
+  const invalidParameterResponse = await fetch(`${baseUrl}/api/logs?unknown=value`);
+  assert.equal(invalidParameterResponse.status, 400);
 
   const excessiveLimitResponse = await fetch(`${baseUrl}/api/logs?limit=101`);
   assert.equal(excessiveLimitResponse.status, 400);

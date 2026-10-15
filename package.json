@@ -1,14 +1,14 @@
 {
   "name": "vimage",
   "version": "1.0.0",
-  "description": "Unsplash image proxy service with LLM fallback",
+  "description": "Authenticated image search for agents with persistent image links",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "test": "node --test"
   },
-  "keywords": ["unsplash", "image", "proxy", "llm"],
+  "keywords": ["unsplash", "image", "agent", "llm"],
   "author": "",
   "license": "Apache-2.0",
   "engines": {
