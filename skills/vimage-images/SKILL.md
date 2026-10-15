@@ -5,7 +5,7 @@ description: 通过 Vimage 的可信后端工具，为文章、报告、网页�
 
 # Vimage 内容配图
 
-接口依据：Vimage 仓库 `README.md` 的「Agent 与线上部署」「API文档」，以及 `docs/AGENT-INTEGRATION.md` 的调用示例。分发时本目录已包含所需工具契约，不需要 Agent 读取服务部署配置。
+接口与配图规则依据：Vimage 仓库 `README.md` 的「Agent 与线上部署」「在 AI 提示词中使用」「API文档」，以及 `docs/AGENT-INTEGRATION.md` 的调用示例。分发时本目录已包含所需工具契约和完整配图展示规则，不需要 Agent 读取服务部署配置。
 
 ## 工具与边界
 
@@ -21,7 +21,7 @@ description: 通过 Vimage 的可信后端工具，为文章、报告、网页�
 
 | 参数 | 规则 |
 | --- | --- |
-| `query` | 必填，去掉首尾空白后为 1–200 字符，不含控制字符；用具体主体、场景和风格表达需要的照片，不夹带凭据或无关隐私信息 |
+| `query` | 必填，去掉首尾空白后为 1–200 字符，不含控制字符；描述词必须是英文，符合图片上下文语义，用具体主体、场景和风格表达需要的照片，不夹带凭据或无关隐私信息；不需要连字符或三位序号 |
 | `width` | 可选，80–2400 的整数；未指定时由后端使用 900 |
 
 调用示例：`search_image({"query":"sunlit modern library interior","width":900})`。
@@ -37,6 +37,30 @@ description: 通过 Vimage 的可信后端工具，为文章、报告、网页�
 3. 检查工具是否成功，且结果包含非空 `id` 和完整 HTTP(S) 图片 `url`。仅使用返回的 `/i/图片ID` 链接；异常结果交给后端排查，不自行修补。
 4. 将返回的 `url` 原样用于 Markdown 图片或 HTML `img` 的 `src`。HTML 按语法转义属性值，不改变 URL 含义；补充贴合内容的替代文本。
 5. 修改现有页面时只替换所需图片来源，保留布局、类名、图片位置和用户要求的显示方式。不要把获取链接描述成已经视觉核验图片内容。
+
+## 配图展示规则
+
+- 所有配图使用 Vimage 工具成功返回的固定图片 URL。输出 Markdown 时，使用普通图片语法：`![图片描述](图片URL)`。
+- 输出 HTML 时，`img` 标签保留原本布局、类名、尺寸和父容器设计，不因为图片规则改变页面结构或视觉布局。
+- 给所有 Vimage 的 `img` 标签添加 `loading="lazy" decoding="async"`，让浏览器按需加载图片，避免大量图片阻塞页面打开。
+- 图片加载前必须使用 Editorial Neutral 动态渐变占位，不要只用静态灰色背景。优先在不改变布局的前提下给 Vimage `img` 追加 `vimage-img` 类名，保留已有类名，并在页面 CSS 中加入：
+
+```css
+.vimage-img {
+  background: linear-gradient(135deg, #f0ede5 0%, #c9c1b6 34%, #9d9f99 68%, #626860 100%);
+  background-size: 240% 100%;
+  animation: vimage-placeholder-shimmer 1.8s ease-in-out infinite;
+}
+@keyframes vimage-placeholder-shimmer {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+```
+
+- 如果图片已有不影响布局的容器，可以给容器添加动态 shimmer 和图片淡入过渡；不要为了占位效果额外包裹元素或改变布局。
+- 可以根据用户意图、页面布局和上下文主题为图片补充 `width`、`height`、`aspect-ratio` 等尺寸信息，帮助浏览器预留空间；这些尺寸必须符合原有视觉设计和图片所在容器，不要生硬套用固定比例。
+- 不要限制页面图片数量，不要删除图片，不要改变图片所在位置，不要为了图片加载规则调整布局。服务端配额仅限制调用，不作为删图或缩减页面图片数量的理由；达到配额时按失败处理保留内容与图片占位。
 
 ## 固定链接规则
 

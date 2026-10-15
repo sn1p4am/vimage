@@ -32,7 +32,7 @@ docker compose up -d --build
 
 配套 Skill 位于 [skills/vimage-images/SKILL.md](skills/vimage-images/SKILL.md)，工具 schema 位于 [search-image-tool.json](skills/vimage-images/references/search-image-tool.json)。将整个 `skills/vimage-images/` 目录交给产品的 Skill 加载器即可加载指令；仍需产品可信后端注册 `search_image` 工具。Skill 本身不注册工具、不读取 Key，也不替代后端的权限和密钥隔离。
 
-Skill 只描述如何调用 `search_image` 工具，模型仅传关键词、尺寸。产品可信后端添加认证头，收到图片 URL 后交给模型用于 Markdown 或 HTML。不要让模型直接拼接带关键词的图片 URL，也不要把 Key 放入模型可读取的文件或环境。
+Skill 同时包含 `search_image` 调用约定和配图展示规则，模型仅传关键词、尺寸。产品可信后端添加认证头，收到图片 URL 后交给模型用于 Markdown 或 HTML。不要让模型直接拼接带关键词的图片 URL，也不要把 Key 放入模型可读取的文件或环境。
 
 ```env
 PUBLIC_BASE_URL=http://localhost:7749
@@ -43,6 +43,39 @@ UNSPLASH_PROXY_APPROVED=false
 上线将 `PUBLIC_BASE_URL` 改为实际 HTTPS 域名，用 Nginx/Caddy 转发到本机端口，并设置 `ADMIN_COOKIE_SECURE=true`。修改配置后执行 `docker compose up -d --force-recreate`；更新代码后使用 `docker compose up -d --build`。本地和线上使用同一路径，不从不可信的请求 Host 推导返回域名。
 
 默认固定链接 302 到上游。需要浏览器不跳转，可启用图片代理模式，但当前 Unsplash 来源必须先确认自有图片基础设施的接入要求。联系方式与可发送的英文模板见 [Unsplash 许可确认](docs/UNSPLASH-APPROVAL.md)。配置开关不是授权证明，也不自动实现对方要求的浏览量上报。
+
+## 🤖 在 AI 提示词中使用（推荐）
+
+先由产品可信后端注册 `search_image` 工具，再将以下规则加入系统提示词或项目提示词；也可以直接加载配套 [Skill](skills/vimage-images/SKILL.md)，其中已完整包含配图展示规则。仅粘贴提示词不会自动接入工具。
+
+保留原版的英文描述词、Markdown/HTML 输出、懒加载、Editorial Neutral 动态渐变占位和布局规则。旧版的三位序号、连字符文件名与手拼动态 URL 已改为工具返回的固定链接；宽度通过工具参数指定，不能再向图片链接追加参数。
+
+```text
+图片使用规则：
+- 所有配图使用 Vimage 图片 URL；通过运行时提供的 search_image 工具查找图片，不自行拼接图片地址。
+- query 描述词必须是英文，符合图片上下文语义，用具体主体、场景和风格表达需要的照片，例如 brutalist concrete museum；不再要求连字符或三位序号。
+- 按布局需要传入 width（80–2400 的整数，默认 900），例如 search_image({"query":"brutalist concrete museum","width":900})。可信后端将 width 映射到 w，质量固定为 q=80；不额外传入 q、URL 或认证参数。
+- 只使用工具成功返回的完整固定图片 url，原样用于成品，不修改域名、图片 ID 或追加查询参数。本地与线上地址由后端配置切换，不在提示词中写死域名。
+- API Key 由可信后端注入，不索取、读取或输出 Key，不用 shell、curl、浏览器或通用 HTTP 工具绕过 search_image。
+- 工具未接入、找图失败或达到配额时，保留内容和图片占位并说明原因，不虚构链接、不用随机图片兜底；相同主题和尺寸优先复用已有成功结果，不重复找图或批量换词碰运气。
+- 输出 Markdown 时，使用普通图片语法：![图片描述](图片URL)。
+- 输出 HTML 时，img 标签保留原本布局、类名、尺寸和父容器设计，不因为图片规则改变页面结构或视觉布局。
+- 输出 HTML 时，所有 Vimage 的 img 标签都添加 loading="lazy" decoding="async"，让浏览器按需加载图片，避免大量图片阻塞页面打开。
+- 输出 HTML 时，Vimage 图片加载前必须使用 Editorial Neutral 动态渐变占位，不要只用静态灰色背景。优先在不改变布局的前提下给 Vimage img 追加 vimage-img 类名，保留已有类名，并在页面 CSS 中加入：
+  .vimage-img {
+    background: linear-gradient(135deg, #f0ede5 0%, #c9c1b6 34%, #9d9f99 68%, #626860 100%);
+    background-size: 240% 100%;
+    animation: vimage-placeholder-shimmer 1.8s ease-in-out infinite;
+  }
+  @keyframes vimage-placeholder-shimmer {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
+- 如果图片已有不影响布局的容器，可以给容器添加动态 shimmer 和图片淡入过渡；不要为了占位效果额外包裹元素或改变布局。
+- 输出 HTML 时，可以根据用户意图、页面布局和上下文主题为图片补充 width、height、aspect-ratio 等尺寸信息，帮助浏览器预留空间；这些尺寸必须符合原有视觉设计和图片所在容器，不要生硬套用固定比例。
+- 不要限制页面图片数量，不要删除图片，不要改变图片所在位置，不要为了图片加载规则调整布局。服务端配额仅限制调用，不作为删图或缩减页面图片数量的理由。
+```
 
 ## 升级注意
 
