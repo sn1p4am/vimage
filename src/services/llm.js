@@ -9,6 +9,7 @@ const DASHSCOPE_API_BASE = process.env.DASHSCOPE_API_BASE
 const API_KEY = process.env.DASHSCOPE_API_KEY;
 const MODEL = process.env.DASHSCOPE_MODEL || 'deepseek-v4-flash';
 const DEFAULT_LLM_TIMEOUT_MS = 2500;
+const candidateCache = new Map();
 
 if (!API_KEY) {
   console.warn('Warning: DASHSCOPE_API_KEY not set in environment variables');
@@ -124,6 +125,10 @@ function getFallbackCandidates(originalTerm) {
  * @returns {Promise<string[]>}
  */
 async function getLLMSearchCandidates(originalTerm, options = {}) {
+  const cacheKey = originalTerm.trim().toLowerCase();
+  const cached = candidateCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return [...cached.candidates];
+  candidateCache.delete(cacheKey);
   const timeout = getPositiveInteger(
     options.timeoutMs,
     getPositiveInteger(process.env.LLM_TIMEOUT_MS, DEFAULT_LLM_TIMEOUT_MS)
@@ -134,6 +139,8 @@ async function getLLMSearchCandidates(originalTerm, options = {}) {
       `${DASHSCOPE_API_BASE}/chat/completions`,
       {
         model: MODEL,
+        enable_thinking: process.env.DASHSCOPE_ENABLE_THINKING === 'true',
+        max_tokens: getPositiveInteger(process.env.LLM_MAX_TOKENS, 256),
         messages: [
           { role: 'system', content: 'You are a precise image search assistant.' },
           { role: 'user', content: generateCandidatesPrompt(originalTerm) }
@@ -154,12 +161,18 @@ async function getLLMSearchCandidates(originalTerm, options = {}) {
       throw new Error('Invalid LLM response format');
     }
 
-    return parseCandidates(content, originalTerm);
+    const candidates = parseCandidates(content, originalTerm);
+    const maxEntries = getPositiveInteger(process.env.LLM_CACHE_MAX_ENTRIES, 1000);
+    if (candidateCache.size >= maxEntries) candidateCache.delete(candidateCache.keys().next().value);
+    candidateCache.set(cacheKey, {
+      candidates,
+      expiresAt: Date.now() + getPositiveInteger(process.env.LLM_CACHE_TTL, 3600) * 1000
+    });
+    return [...candidates];
   } catch (error) {
     console.error('LLM candidate generation failed:', error.message);
     if (error.response) {
       console.error('Response status:', error.response.status);
-      console.error('Response data:', JSON.stringify(error.response.data));
     }
 
     return getFallbackCandidates(originalTerm);

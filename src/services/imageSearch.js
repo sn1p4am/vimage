@@ -106,6 +106,8 @@ function normalizeCandidates(candidates, originalTerm) {
  * Create an image search function. Dependencies are injectable for focused tests.
  */
 function createImageSearcher(overrides = {}) {
+  let blockedUntil = 0;
+  let blockedResult = null;
   const dependencies = {
     searchPhotos: (...args) => require('./unsplash').searchPhotos(...args),
     getLLMSearchCandidates: (...args) => require('./llm').getLLMSearchCandidates(...args),
@@ -128,8 +130,30 @@ function createImageSearcher(overrides = {}) {
     overrides.llmTimeoutMs,
     getPositiveInteger(process.env.LLM_TIMEOUT_MS, DEFAULT_OPERATION_TIMEOUT_MS)
   );
+  const upstreamCooldownMs = getPositiveInteger(
+    overrides.upstreamCooldownMs,
+    getPositiveInteger(process.env.UPSTREAM_COOLDOWN_MS, 60000)
+  );
+
+  function stopForUpstreamError(error, logData) {
+    if (!Number.isInteger(error.status) || error.status < 400) return null;
+    logData.error_message = error.message;
+    const result = error.status === 429 ? { rateLimited: true } : { error: error.message };
+    if ([401, 403, 429].includes(error.status) || error.status >= 500) {
+      const duration = error.status === 429
+        ? Math.max(upstreamCooldownMs, error.retryAfterMs || 0)
+        : upstreamCooldownMs;
+      blockedUntil = dependencies.now() + duration;
+      blockedResult = { result, errorMessage: error.message };
+    }
+    return result;
+  }
 
   return async function searchImage(description, logData) {
+    if (blockedResult && dependencies.now() < blockedUntil) {
+      logData.error_message = blockedResult.errorMessage;
+      return blockedResult.result;
+    }
     const deadline = dependencies.now() + searchBudgetMs;
     const searchUnsplash = async (term, operationName, onRequest = () => {}) => {
       if (!dependencies.tryConsumeRequestSlot()) {
@@ -161,6 +185,8 @@ function createImageSearcher(overrides = {}) {
       if (error instanceof SearchRateLimitError) {
         return { rateLimited: true };
       }
+      const stopped = stopForUpstreamError(error, logData);
+      if (stopped) return stopped;
     }
 
     if (remainingTime(deadline, dependencies.now) <= 0) {
@@ -212,6 +238,8 @@ function createImageSearcher(overrides = {}) {
         if (error instanceof SearchRateLimitError) {
           return { rateLimited: true };
         }
+        const stopped = stopForUpstreamError(error, logData);
+        if (stopped) return stopped;
       }
     }
 

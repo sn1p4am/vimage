@@ -1,141 +1,68 @@
-/**
- * 主图片路由
- * 处理图片请求并返回302重定向
- */
-
 const express = require('express');
-const router = express.Router();
-
-const { parseImageUrl } = require('../utils/urlParser');
-const { getCachedImage, setCachedImage } = require('../services/cache');
-const { isRateLimitReached } = require('../services/rateLimit');
-const { getPicsumRandomUrl, optimizeImageUrl } = require('../services/unsplash');
-const { searchImage } = require('../services/imageSearch');
+const db = require('../db/init');
+const { loadImageConfig } = require('../config/imageAccess');
+const { createAssetStore, validateUpstreamUrl } = require('../services/imageAssets');
+const { fetchImage } = require('../services/imageProxy');
+const { asyncHandler } = require('../utils/asyncHandler');
 const { logRequest } = require('../db/logger');
 
-const REDIRECT_CACHE_TTL = parseInt(process.env.REDIRECT_CACHE_TTL, 10)
-  || parseInt(process.env.CACHE_TTL, 10)
-  || 43200;
-
-function redirectToImage(res, url) {
-  res.set('Cache-Control', `public, max-age=${REDIRECT_CACHE_TTL}, s-maxage=${REDIRECT_CACHE_TTL}, stale-while-revalidate=86400`);
-  return res.redirect(302, url);
+function createImageRouter(options = {}) {
+  const config = options.config || loadImageConfig();
+  const store = options.store || createAssetStore(db);
+  const loadImage = options.fetchImage || fetchImage;
+  const router = express.Router();
+  let activeRequests = 0;
+  router.get('/i/:id', asyncHandler(async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    if (Object.keys(req.query).length) return res.status(400).json({ error: 'Fixed image URLs do not accept parameters' });
+    const asset = store.get(req.params.id);
+    if (!asset) return res.status(404).json({ error: 'Image not found' });
+    try {
+      validateUpstreamUrl(asset.upstream_url);
+    } catch {
+      return res.status(502).json({ error: 'Image upstream unavailable' });
+    }
+    const cacheControl = `public, max-age=${config.cacheTtl}, s-maxage=${config.cacheTtl}`;
+    if (config.deliveryMode === 'redirect') {
+      return res.set('Cache-Control', cacheControl).redirect(302, asset.upstream_url);
+    }
+    if (activeRequests >= config.proxyConcurrency) {
+      return res.set('Retry-After', '1').status(503).json({ error: 'Image delivery is busy' });
+    }
+    activeRequests += 1;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), config.proxyTimeoutMs);
+    const abort = () => controller.abort();
+    res.once('close', abort);
+    try {
+      const image = await loadImage(asset.upstream_url, config, controller.signal);
+      if (res.destroyed) return;
+      if (controller.signal.aborted) throw new Error('Image delivery timed out');
+      res.set({
+        'Cache-Control': cacheControl,
+        'Content-Type': image.contentType,
+        'X-Content-Type-Options': 'nosniff',
+        'Content-Security-Policy': "default-src 'none'; sandbox"
+      });
+      res.send(image.body);
+    } catch {
+      if (!res.destroyed) res.status(502).json({ error: 'Image upstream unavailable' });
+    } finally {
+      clearTimeout(timeout);
+      res.off('close', abort);
+      activeRequests -= 1;
+    }
+  }));
+  router.get('/:filename', (req, res) => {
+    if (!/^vimage_/i.test(req.params.filename)) {
+      logRequest({ original_url: req.params.filename, error_message: 'Not Found', response_time: 0 });
+      return res.status(404).json({ error: 'Not Found' });
+    }
+    return res.set('Cache-Control', 'no-store').status(410).json({
+      error: 'Dynamic image URLs are disabled. Use the authenticated POST /api/images/resolve endpoint.'
+    });
+  });
+  return router;
 }
 
-/**
- * 主图片处理逻辑
- */
-router.get('/:filename', async (req, res) => {
-  const startTime = Date.now();
-  const filename = req.params.filename;
-
-  const logData = {
-    original_url: filename,
-    query_term: null,
-    retry_count: 0,
-    retry_1_term: null,
-    retry_2_term: null,
-    retry_3_term: null,
-    success: false,
-    final_url: null,
-    source: null,
-    response_time: null,
-    error_message: null,
-    from_cache: false
-  };
-
-  try {
-    const { description } = parseImageUrl(filename);
-    logData.query_term = description;
-  } catch (error) {
-    logData.error_message = error.message;
-    logData.response_time = Date.now() - startTime;
-    logRequest(logData);
-
-    return res.status(404).json({
-      error: 'Not Found',
-      message: 'The requested resource was not found'
-    });
-  }
-
-  try {
-    const description = logData.query_term;
-
-    // 1. 检查缓存
-    const cached = getCachedImage(description);
-    if (cached) {
-      logData.success = true;
-      logData.final_url = cached.url;
-      logData.source = 'cache';
-      logData.from_cache = true;
-      logData.response_time = Date.now() - startTime;
-
-      logRequest(logData);
-      return redirectToImage(res, optimizeImageUrl(cached.url, req.query));
-    }
-
-    // 2. 检查速率限制
-    if (isRateLimitReached()) {
-      const url = getPicsumRandomUrl(req.query);
-      logData.success = false;
-      logData.final_url = url;
-      logData.source = 'picsum-rate-limit';
-      logData.response_time = Date.now() - startTime;
-
-      logRequest(logData);
-      return redirectToImage(res, url);
-    }
-
-    // 3. 在统一时间预算内尝试直搜和一次LLM候选词搜索
-    const searchResult = await searchImage(description, logData);
-
-    if (searchResult?.rateLimited) {
-      const url = getPicsumRandomUrl(req.query);
-      logData.success = false;
-      logData.final_url = url;
-      logData.source = 'picsum-rate-limit';
-      logData.response_time = Date.now() - startTime;
-
-      logRequest(logData);
-      return redirectToImage(res, url);
-    } else if (searchResult) {
-      // 成功获取Unsplash图片
-      logData.success = true;
-      logData.final_url = searchResult.url;
-      logData.source = searchResult.source;
-
-      setCachedImage(description, searchResult.url);
-      logData.response_time = Date.now() - startTime;
-
-      logRequest(logData);
-      return redirectToImage(res, optimizeImageUrl(searchResult.url, req.query));
-    } else {
-      // 全部失败，使用Picsum兜底
-      const url = getPicsumRandomUrl(req.query);
-      logData.success = false;
-      logData.final_url = url;
-      logData.source = 'picsum-all-failed';
-      logData.response_time = Date.now() - startTime;
-
-      logRequest(logData);
-      return redirectToImage(res, url);
-    }
-
-  } catch (error) {
-    console.error('Image route error:', error);
-
-    logData.success = false;
-    logData.error_message = error.message;
-    logData.response_time = Date.now() - startTime;
-
-    // 错误时使用Picsum兜底
-    const url = getPicsumRandomUrl(req.query);
-    logData.final_url = url;
-    logData.source = 'picsum-error';
-
-    logRequest(logData);
-    return redirectToImage(res, url);
-  }
-});
-
-module.exports = router;
+module.exports = { createImageRouter };

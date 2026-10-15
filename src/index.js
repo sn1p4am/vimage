@@ -3,31 +3,57 @@
  * 主入口文件
  */
 
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 const express = require('express');
 const path = require('path');
+const db = require('./db/init');
+const { cleanupLogs } = require('./db/logger');
 
-const imageRouter = require('./routes/image');
+const { createImageRouter } = require('./routes/image');
+const { createResolveRouter } = require('./routes/resolve');
 const apiRouter = require('./routes/api');
 const {
   requireAdminAuth,
   showLoginPage,
   handleLogin,
-  handleLogout
+  handleLogout,
+  loginRateLimiter
 } = require('./middleware/adminAuth');
 
 const app = express();
 const PORT = process.env.PORT || 7749;
+app.disable('x-powered-by');
 
 // 中间件
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
-app.use(['/dashboard', '/dashboard.html', '/api/logs'], requireAdminAuth);
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.json({ limit: '8kb' }));
+app.use(express.urlencoded({ extended: false, limit: '8kb', parameterLimit: 20 }));
+app.use((req, res, next) => {
+  res.set('X-Content-Type-Options', 'nosniff');
+  next();
+});
+app.get('/healthz', (req, res) => {
+  try {
+    db.prepare('SELECT 1').get();
+    res.json({ status: 'ok' });
+  } catch {
+    res.status(503).json({ status: 'unavailable' });
+  }
+});
+app.use(['/login', '/login.html', '/logout', '/dashboard', '/dashboard.html', '/dashboard.css', '/dashboard.js', '/api'], (req, res, next) => {
+  res.set({
+    'Cache-Control': 'no-store',
+    'X-Frame-Options': 'DENY',
+    'Content-Security-Policy': "frame-ancestors 'none'",
+    'Referrer-Policy': 'same-origin'
+  });
+  next();
+});
+app.use('/api/images', createResolveRouter());
+app.use(['/dashboard', '/dashboard.html', '/dashboard.css', '/dashboard.js', '/api'], requireAdminAuth);
 
 // 请求日志中间件
 app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} ${req.method} ${req.url}`);
+  console.log(`${new Date().toISOString()} ${req.method} ${req.path}`);
   next();
 });
 
@@ -37,16 +63,18 @@ app.get('/favicon.ico', (req, res) => {
   res.status(204).end();
 });
 
-app.get('/login', showLoginPage);
-app.post('/login', handleLogin);
+app.get(['/login', '/login.html'], showLoginPage);
+app.post('/login', loginRateLimiter, handleLogin);
 app.post('/logout', handleLogout);
 
-app.get('/dashboard', (req, res) => {
+app.get(['/dashboard', '/dashboard.html'], (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
 });
+app.get('/dashboard.css', (req, res) => res.sendFile(path.join(__dirname, 'public', 'dashboard.css')));
+app.get('/dashboard.js', (req, res) => res.sendFile(path.join(__dirname, 'public', 'dashboard.js')));
 
 app.use('/api', apiRouter);
-app.use('/', imageRouter);
+app.use('/', createImageRouter());
 
 // 404处理
 app.use((req, res) => {
@@ -58,39 +86,25 @@ app.use((req, res) => {
 
 // 全局错误处理中间件
 app.use((err, req, res, next) => {
-  console.error('Unhandled error:', err);
-
-  // 记录错误
-  const errorLog = {
-    timestamp: new Date().toISOString(),
-    method: req.method,
-    url: req.url,
-    error: err.message,
-    stack: err.stack
-  };
-
-  console.error('Error details:', errorLog);
-
-  // 对于图片请求，返回Picsum随机图片
-  if (req.path.startsWith('/vimage_')) {
-    const cacheTtl = parseInt(process.env.REDIRECT_CACHE_TTL, 10)
-      || parseInt(process.env.CACHE_TTL, 10)
-      || 43200;
-
-    res.set('Cache-Control', `public, max-age=${cacheTtl}, s-maxage=${cacheTtl}, stale-while-revalidate=86400`);
-    return res.redirect(302, `https://picsum.photos/1200/800?random=${Date.now()}`);
-  }
-
-  // 其他请求返回JSON错误
-  res.status(500).json({
+  const status = Number.isInteger(err.status) && err.status >= 400 && err.status < 500 ? err.status : 500;
+  console.error(`Request failed: ${req.method} ${req.path} (${status})`);
+  res.set('Cache-Control', 'no-store').status(status).json({
     error: 'Internal Server Error',
-    message: process.env.NODE_ENV === 'development' ? err.message : 'An unexpected error occurred'
+    message: 'An unexpected error occurred'
   });
 });
 
-// 启动服务器
-app.listen(PORT, () => {
-  console.log(`
+function startServer() {
+  const maintenanceTimer = setInterval(() => {
+    try {
+      cleanupLogs();
+    } catch (error) {
+      console.error('Log cleanup failed:', error.message);
+    }
+  }, 60000);
+  maintenanceTimer.unref();
+  const server = app.listen(PORT, () => {
+    console.log(`
   ╔═══════════════════════════════════════╗
   ║   Vimage服务已启动                     ║
   ╠═══════════════════════════════════════╣
@@ -99,15 +113,25 @@ app.listen(PORT, () => {
   ║  环境: ${(process.env.NODE_ENV || 'development').padEnd(32)}║
   ╚═══════════════════════════════════════╝
   `);
-});
+  });
+  let shuttingDown = false;
+  const shutdown = () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    clearInterval(maintenanceTimer);
+    const shutdownTimer = setTimeout(() => process.exit(1), 25000);
+    shutdownTimer.unref();
+    server.close(() => {
+      db.close();
+      clearTimeout(shutdownTimer);
+      process.exit(0);
+    });
+  };
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
+  return server;
+}
 
-// 优雅关闭
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received, shutting down gracefully...');
-  process.exit(0);
-});
+if (require.main === module) startServer();
 
-process.on('SIGINT', () => {
-  console.log('\nSIGINT received, shutting down gracefully...');
-  process.exit(0);
-});
+module.exports = { app, startServer };

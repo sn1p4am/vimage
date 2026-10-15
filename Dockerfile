@@ -1,25 +1,22 @@
-FROM node:20-alpine
+FROM node:24-alpine AS dependencies
 
 WORKDIR /app
 
-# 复制依赖文件
 COPY package*.json ./
+RUN apk add --no-cache python3 make g++ \
+    && npm_config_nodedir=/usr/local npm ci --omit=dev
 
-# 安装依赖（生产环境）
-RUN npm ci --only=production
+FROM node:24-alpine
 
-# 复制源代码
+ENV NODE_ENV=production
+WORKDIR /app
+COPY --from=dependencies /app/node_modules ./node_modules
+COPY package*.json ./
 COPY src ./src
+RUN mkdir -p /data && chown node:node /data
+USER node
 
-# 创建数据目录
-RUN mkdir -p /data
-
-# 暴露端口（默认7749，可通过.env配置）
 EXPOSE 7749
-
-# 健康检查
-HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-  CMD wget --quiet --tries=1 --spider http://localhost:7749/api/stats || exit 1
-
-# 启动服务
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:' + (process.env.PORT || '7749') + '/healthz').then(response => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
 CMD ["node", "src/index.js"]

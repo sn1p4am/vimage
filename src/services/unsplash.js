@@ -9,6 +9,23 @@ const UNSPLASH_API_BASE = 'https://api.unsplash.com';
 const ACCESS_KEY = process.env.UNSPLASH_ACCESS_KEY;
 const DEFAULT_UNSPLASH_TIMEOUT_MS = 2500;
 
+class UnsplashError extends Error {
+  constructor(status, retryAfterMs = 0) {
+    super(`Unsplash API error: ${status}`);
+    this.name = 'UnsplashError';
+    this.status = status;
+    this.retryAfterMs = retryAfterMs;
+  }
+}
+
+function parseRetryAfter(value) {
+  if (!value) return 0;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? Math.max(0, timestamp - Date.now()) : 0;
+}
+
 if (!ACCESS_KEY) {
   console.warn('Warning: UNSPLASH_ACCESS_KEY not set in environment variables');
 }
@@ -32,9 +49,9 @@ async function searchPhotos(query, options = {}) {
     const response = await axios.get(`${UNSPLASH_API_BASE}/search/photos`, {
       params: {
         query: query,
-        per_page: 1,  // 只返回1张图片
-        client_id: ACCESS_KEY
+        per_page: 1
       },
+      headers: { Authorization: `Client-ID ${ACCESS_KEY}` },
       timeout,
       signal: options.signal
     });
@@ -54,7 +71,11 @@ async function searchPhotos(query, options = {}) {
       throw new Error('Unsplash API timeout');
     } else if (error.response) {
       // HTTP错误响应
-      throw new Error(`Unsplash API error: ${error.response.status}`);
+      const status = error.response.status === 403
+        && error.response.headers?.['x-ratelimit-remaining'] === '0'
+        ? 429
+        : error.response.status;
+      throw new UnsplashError(status, parseRetryAfter(error.response.headers?.['retry-after']));
     } else {
       // 网络错误或其他
       throw new Error('Unsplash API network error');
@@ -96,7 +117,7 @@ function optimizeImageUrl(url, options = {}) {
   try {
     const parsedUrl = new URL(url);
 
-    if (parsedUrl.hostname.endsWith('images.unsplash.com')) {
+    if (parsedUrl.hostname === 'images.unsplash.com') {
       if (width) {
         parsedUrl.searchParams.set('w', width.toString());
       }
@@ -128,6 +149,8 @@ function getPicsumRandomUrl(options = {}) {
 }
 
 module.exports = {
+  UnsplashError,
+  parseRetryAfter,
   searchPhotos,
   getPicsumRandomUrl,
   optimizeImageUrl

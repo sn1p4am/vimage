@@ -1,0 +1,43 @@
+{
+  "name": "search_image",
+  "description": "为用户内容查找一张配图，返回 Vimage 固定图片链接。调用由可信后端完成，工具不接受认证信息、目标地址或用户身份。相同主题和尺寸优先复用已有结果。",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200,
+        "pattern": "\\S",
+        "not": { "pattern": "[\\u0000-\\u001f\\u007f]" },
+        "description": "照片的主体、场景或风格；去掉首尾空白，不含控制字符或凭据。"
+      },
+      "width": {
+        "type": "integer",
+        "minimum": 80,
+        "maximum": 2400,
+        "default": 900,
+        "description": "目标图片宽度，单位像素。"
+      }
+    },
+    "required": ["query"],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{32}$"
+      },
+      "url": {
+        "type": "string",
+        "format": "uri",
+        "pattern": "^https?://[^/?#@]+/i/[a-f0-9]{32}$",
+        "description": "由后端配置决定的完整固定图片链接，原样用于图片展示。"
+      }
+    },
+    "required": ["id", "url"],
+    "additionalProperties": false
+  }
+}

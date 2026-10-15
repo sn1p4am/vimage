@@ -1,0 +1,15 @@
+.git
+.agents
+.aws
+.codex
+.env
+.secrets
+DEPLOYMENT.local.md
+.env.*
+!.env.example
+node_modules
+data
+logs
+*.log
+tmp
+temp

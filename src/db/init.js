@@ -81,6 +81,20 @@ function initDatabase() {
   db.exec(createIndexSQL);
   db.exec(createPaginationIndexSQL);
   db.exec(createImageCacheExpiryIndexSQL);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS image_assets (
+      id TEXT PRIMARY KEY,
+      upstream_url TEXT NOT NULL UNIQUE,
+      created_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS image_api_usage (
+      key_hash TEXT PRIMARY KEY,
+      minute_start INTEGER NOT NULL,
+      minute_count INTEGER NOT NULL,
+      day_start INTEGER NOT NULL,
+      day_count INTEGER NOT NULL
+    );
+  `);
 
   console.log('Database initialized successfully');
 }

@@ -11,7 +11,7 @@ const express = require('express');
 const db = require('../src/db/init');
 const { getLogs, getStats, logRequest } = require('../src/db/logger');
 const apiRouter = require('../src/routes/api');
-const imageRouter = require('../src/routes/image');
+const imageRouter = require('../src/routes/image').createImageRouter();
 
 function createLog(overrides = {}) {
   return {

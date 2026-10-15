@@ -6,7 +6,7 @@
 const express = require('express');
 const router = express.Router();
 
-const { getStats, getLogs, LOG_TYPES } = require('../db/logger');
+const { getStats, getLogs, LOG_TYPES, LOG_FILTER_OPTIONS } = require('../db/logger');
 const { getRateLimitStatus } = require('../services/rateLimit');
 const { getCacheStats } = require('../services/cache');
 
@@ -23,7 +23,8 @@ router.get('/stats', (req, res) => {
     res.json({
       ...stats,
       rateLimitStatus,
-      cacheStats
+      cacheStats,
+      retentionDays: Math.max(0, Number(process.env.LOG_RETENTION_DAYS ?? 30) || 0)
     });
   } catch (error) {
     console.error('Stats API error:', error);
@@ -52,7 +53,21 @@ router.get('/logs', (req, res) => {
       });
     }
 
-    const logs = getLogs(page, limit, type);
+    const filters = {};
+    for (const [name, options] of Object.entries(LOG_FILTER_OPTIONS)) {
+      const value = req.query[name];
+      if (value !== undefined && !options.includes(value)) {
+        return res.status(400).json({ error: `Invalid ${name}`, allowedValues: options });
+      }
+      if (value !== undefined) filters[name] = value;
+    }
+    if (req.query.q !== undefined) {
+      if (typeof req.query.q !== 'string' || req.query.q.length > 200) {
+        return res.status(400).json({ error: 'Search text must be a string of at most 200 characters' });
+      }
+      filters.q = req.query.q.trim();
+    }
+    const logs = getLogs(page, limit, type, filters);
     res.json(logs);
   } catch (error) {
     console.error('Logs API error:', error);

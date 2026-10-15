@@ -1,0 +1,4 @@
+services:
+  vimage:
+    ports: !override
+      - "127.0.0.1:${PORT:-7749}:${PORT:-7749}"

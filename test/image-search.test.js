@@ -187,3 +187,47 @@ test('rate limit is checked before every Unsplash request', async () => {
   assert.equal(logData.retry_count, 0);
   assert.equal(logData.retry_1_term, null);
 });
+
+for (const status of [401, 403, 429, 503]) {
+  test(`HTTP ${status} stops keyword retries and suppresses new upstream calls during cooldown`, async () => {
+    let now = 1000;
+    let searches = 0;
+    let llmCalls = 0;
+    const search = createSearcher({
+      now: () => now,
+      upstreamCooldownMs: 100,
+      searchPhotos: async () => {
+        searches += 1;
+        if (searches === 1) throw Object.assign(new Error(`HTTP ${status}`), { status, retryAfterMs: 500 });
+        return { total: 1, url: 'https://images.test/recovered' };
+      },
+      getLLMSearchCandidates: async () => { llmCalls += 1; return ['alternative']; }
+    });
+    const firstLog = createLogData();
+    const first = await search('original', firstLog);
+    assert.equal(firstLog.error_message, `HTTP ${status}`);
+    assert.deepEqual(await search('different-term', createLogData()), first);
+    now = status === 429 ? 1499 : 1099;
+    assert.deepEqual(await search('another-term', createLogData()), first);
+    assert.equal(searches, 1);
+    assert.equal(llmCalls, 0);
+    now += 2;
+    assert.equal((await search('recovered', createLogData())).source, 'unsplash');
+    assert.equal(searches, 2);
+  });
+}
+
+test('an upstream authentication failure during candidate search stops later candidates', async () => {
+  let searches = 0;
+  const search = createSearcher({
+    searchPhotos: async () => {
+      searches += 1;
+      if (searches > 1) throw Object.assign(new Error('Unauthorized'), { status: 401 });
+      return { total: 0, url: null };
+    },
+    getLLMSearchCandidates: async () => ['first', 'second', 'third']
+  });
+  const result = await search('original', createLogData());
+  assert.equal(result.error, 'Unauthorized');
+  assert.equal(searches, 2);
+});

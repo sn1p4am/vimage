@@ -1,5 +1,9 @@
 # 环境变量（包含API密钥）
 .env
+.env.*
+!.env.example
+.secrets/
+DEPLOYMENT.local.md
 
 # 数据库文件
 data/

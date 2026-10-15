@@ -3,6 +3,7 @@
  */
 
 const crypto = require('crypto');
+const { rateLimit } = require('express-rate-limit');
 
 const COOKIE_NAME = 'vimage_admin_session';
 const isEnabled = process.env.ADMIN_AUTH_ENABLED
@@ -15,6 +16,7 @@ const sessionTtl = parseInt(process.env.ADMIN_SESSION_TTL, 10) || 43200;
 const cookieSecure = process.env.ADMIN_COOKIE_SECURE === 'true';
 
 function safeEqual(actual, expected) {
+  if (typeof actual !== 'string' || typeof expected !== 'string') return false;
   const actualBuffer = Buffer.from(actual || '', 'utf8');
   const expectedBuffer = Buffer.from(expected || '', 'utf8');
 
@@ -23,7 +25,7 @@ function safeEqual(actual, expected) {
 }
 
 function parseCookies(req) {
-  const cookies = {};
+  const cookies = Object.create(null);
   const header = req.headers.cookie || '';
 
   header.split(';').forEach(cookie => {
@@ -84,11 +86,31 @@ function verifySessionToken(token) {
 }
 
 function getRedirectUrl(req) {
-  const redirect = req.query.redirect || req.body.redirect || '/dashboard';
-  return typeof redirect === 'string' && redirect.startsWith('/') && !redirect.startsWith('//')
-    ? redirect
-    : '/dashboard';
+  const redirect = req.query.redirect || req.body?.redirect;
+  if (typeof redirect !== 'string' || !redirect.startsWith('/')
+    || redirect.startsWith('//') || /[\\\u0000-\u001f\u007f]/.test(redirect)) {
+    return '/dashboard';
+  }
+  try {
+    const destination = new URL(redirect, 'http://localhost');
+    if (destination.origin !== 'http://localhost' || destination.pathname.startsWith('//')) {
+      return '/dashboard';
+    }
+    return destination.pathname + destination.search + destination.hash;
+  } catch {
+    return '/dashboard';
+  }
 }
+
+const loginRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  requestWasSuccessful: (req, res) => Boolean(res.getHeader('Set-Cookie')),
+  handler: (req, res) => res.status(429).send('登录尝试过于频繁，请 15 分钟后重试。')
+});
 
 function setSessionCookie(res) {
   const secureFlag = cookieSecure ? '; Secure' : '';
@@ -173,6 +195,7 @@ function handleLogout(req, res) {
 }
 
 module.exports = {
+  loginRateLimiter,
   requireAdminAuth,
   showLoginPage,
   handleLogin,
